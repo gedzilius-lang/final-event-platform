@@ -1,0 +1,47 @@
+# Docker build context exclusions (root Dockerfile — Go services)
+# Keeps build context small; only Go source is needed.
+
+# Node / web
+web/
+node_modules/
+
+# Infrastructure config (not needed to compile Go)
+infra/
+.github/
+docs/
+android/
+
+# Secrets — never bake into images
+infra/secrets/
+*.pem
+*.key
+*.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Go build artifacts
+bin/
+dist/
+*.exe
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Markdown / docs (not needed for build)
+*.md
+CLAUDE.md

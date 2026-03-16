@@ -1,0 +1,68 @@
+# Traefik v3 static configuration — VPS A (NiteOS Core)
+# Mounted at /etc/traefik/traefik.yml inside the Traefik container.
+#
+# TLS: Cloudflare DNS-01 challenge (required because domain is proxied via Cloudflare).
+#      Set CF_DNS_API_TOKEN in infra/cloud.env (Cloudflare API token with Zone:DNS:Edit).
+#
+# Initial VPS A staging deployment (M5.2):
+#   Change entrypoint ports to 8080/8443 to co-exist with service-1 nginx.
+#   Restore to 80/443 at M5.6 (Traefik takeover).
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        X-Forwarded-For: keep
+
+entryPoints:
+  web:
+    address: ":8080"          # staging: 8080 (nginx holds :80). Change to :80 at cutover.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":8443"          # staging: 8443 (nginx holds :443). Change to :443 at cutover.
+    http:
+      tls:
+        certResolver: cloudflare
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: proxy
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      # Set ACME_EMAIL and CF_DNS_API_TOKEN in infra/cloud.env
+      email: "${ACME_EMAIL}"
+      storage: /data/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        # CF_DNS_API_TOKEN is read from env automatically by Traefik's Cloudflare provider
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"

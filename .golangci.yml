@@ -1,0 +1,30 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck       # check error return values are handled
+    - gosimple       # simplifications
+    - govet          # go vet checks
+    - ineffassign    # detect ineffectual assignments
+    - staticcheck    # staticcheck suite
+    - unused         # unused code
+    - gofmt          # formatting
+    - goimports      # import ordering
+    - misspell       # typos in comments/strings
+    - noctx          # HTTP requests without context
+    - bodyclose      # HTTP response body close check
+    - exportloopref  # loop variable capture (pre-1.22 guard, safe to keep)
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: niteos.internal
+
+issues:
+  exclude-rules:
+    # Stubs and generated files: allow empty main functions
+    - path: cmd/main\.go
+      linters: [unused]

@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go:
+    name: Go build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Sync workspace (resolve external module checksums)
+        run: go work sync
+
+      - name: Build all services
+        run: go build ./services/... ./edge/... ./pkg/...
+
+      - name: Vet all services
+        run: go vet ./services/... ./edge/... ./pkg/...
+
+      - name: Test all services
+        run: go test ./services/... ./edge/... ./pkg/...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: v1.57
+
+  migrations:
+    name: Validate migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: niteos
+          POSTGRES_USER: niteos
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgres://niteos:testpassword@localhost:5432/niteos?sslmode=disable
+        run: |
+          psql "$DATABASE_URL" -f migrations/000_init_schemas.sql
+          for schema in profiles ledger payments ticketing orders catalog devices sessions sync; do
+            dir="migrations/$schema"
+            [ -d "$dir" ] || continue
+            for f in $(ls "$dir"/*.sql 2>/dev/null | sort); do
+              echo "==> $f"
+              psql "$DATABASE_URL" -f "$f"
+            done
+          done
+
+  admin-web:
+    name: Admin web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/admin/package.json
+
+      - name: Install dependencies
+        run: cd web/admin && npm ci
+
+      - name: Type check
+        run: cd web/admin && npm run typecheck
+
+      - name: Build
+        env:
+          SESSION_SECRET: ci-placeholder-secret-at-least-32-chars
+          GATEWAY_URL: http://localhost:8000
+          AUTH_SERVICE_URL: http://localhost:8010
+          ADMIN_ORIGIN: http://localhost:3001
+        run: cd web/admin && npm run build
+
+  docker-build:
+    name: Docker image build (gateway + admin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build gateway image (validates root Dockerfile + workspace)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          build-args: SERVICE=gateway
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build auth image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          build-args: SERVICE=auth
+          push: false
+          cache-from: type=gha
+
+      - name: Build admin-web image
+        uses: docker/build-push-action@v5
+        with:
+          context: web/admin
+          file: web/admin/Dockerfile
+          push: false
+          cache-from: type=gha

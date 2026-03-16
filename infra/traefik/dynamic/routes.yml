@@ -1,0 +1,29 @@
+# Traefik dynamic configuration — security middleware
+# Service routing is handled via Docker labels in docker-compose.cloud.yml.
+
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Powered-By: ""
+          Server: ""
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+
+    api-ratelimit:
+      rateLimit:
+        average: 200
+        burst: 400
+        period: 1s
+
+    admin-ratelimit:
+      rateLimit:
+        average: 60
+        burst: 120
+        period: 1s

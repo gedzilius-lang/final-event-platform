@@ -1,0 +1,472 @@
+# NiteOS Cloud Production Stack — VPS A
+# Run from repo root: docker compose -f infra/docker-compose.cloud.yml up -d
+# Requires: infra/cloud.env (copy from infra/cloud.env.example and fill in values)
+# Requires: infra/secrets/ directory with key files (see infra/cloud.env.example)
+#
+# Networks:
+#   proxy    — Traefik-facing: only gateway and admin-web are on this network
+#   core     — Internal only: all services + postgres + redis (never exposed)
+
+version: "3.9"
+
+# ── Shared fragments ──────────────────────────────────────────────────────────
+
+x-go-defaults: &go-defaults
+  restart: unless-stopped
+  env_file: ./cloud.env
+  networks: [core]
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-go-build: &go-build
+  context: ..
+  dockerfile: Dockerfile
+
+x-db-deps: &db-deps
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+x-healthcheck: &http-healthcheck
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 10s
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+
+networks:
+  proxy:
+  core:
+    internal: true
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+
+volumes:
+  pgdata:
+  traefik-acme:
+  prometheus-data:
+  grafana-data:
+
+# ── Services ──────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Traefik ────────────────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    restart: unless-stopped
+    networks: [proxy, core]
+    ports:
+      - "8080:8080"   # staging: nginx holds :80. Change to 80:80 at cutover.
+      - "8443:8443"   # staging: nginx holds :443. Change to 443:443 at cutover.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-acme:/data
+    env_file: ./cloud.env
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      <<: *http-healthcheck
+    labels:
+      - "traefik.enable=true"
+      # Dashboard — restrict to internal IP or use BasicAuth in production
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
+
+  # ── Postgres ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [core]
+    environment:
+      POSTGRES_DB: niteos
+      POSTGRES_USER: niteos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U niteos -d niteos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [core]
+    command: redis-server --requirepass ${REDIS_PASSWORD} --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Auth (:8010) ───────────────────────────────────────────────────────────
+  auth:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: auth
+    environment:
+      AUTH_LISTEN_ADDR: ":8010"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key.pem
+      PROFILES_SERVICE_URL: http://profiles:8020
+    volumes:
+      - ./secrets/jwt_private_key.pem:/run/secrets/jwt_private_key.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8010/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Profiles (:8020) ───────────────────────────────────────────────────────
+  profiles:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: profiles
+    environment:
+      PROFILES_LISTEN_ADDR: ":8020"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+    <<: *db-deps
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8020/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Ledger (:8030) ─────────────────────────────────────────────────────────
+  ledger:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: ledger
+    environment:
+      LEDGER_LISTEN_ADDR: ":8030"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+    <<: *db-deps
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8030/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Wallet (:8040) ─────────────────────────────────────────────────────────
+  wallet:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: wallet
+    environment:
+      WALLET_LISTEN_ADDR: ":8040"
+      LEDGER_SERVICE_URL: http://ledger:8030
+    depends_on:
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8040/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Ticketing (:8050) ──────────────────────────────────────────────────────
+  ticketing:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: ticketing
+    environment:
+      TICKETING_LISTEN_ADDR: ":8050"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+      LEDGER_SERVICE_URL: http://ledger:8030
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8050/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Payments (:8060) ───────────────────────────────────────────────────────
+  payments:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: payments
+    environment:
+      PAYMENTS_LISTEN_ADDR: ":8060"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+      LEDGER_SERVICE_URL: http://ledger:8030
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8060/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Devices (:8070) ────────────────────────────────────────────────────────
+  devices:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: devices
+    environment:
+      DEVICES_LISTEN_ADDR: ":8070"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+    <<: *db-deps
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8070/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Catalog (:8080) ────────────────────────────────────────────────────────
+  catalog:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: catalog
+    environment:
+      CATALOG_LISTEN_ADDR: ":8080"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+    <<: *db-deps
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Orders (:8090) ─────────────────────────────────────────────────────────
+  orders:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: orders
+    environment:
+      ORDERS_LISTEN_ADDR: ":8090"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+      LEDGER_SERVICE_URL: http://ledger:8030
+      SESSIONS_SERVICE_URL: http://sessions:8100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+      sessions:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Sessions (:8100) ───────────────────────────────────────────────────────
+  sessions:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: sessions
+    environment:
+      SESSIONS_LISTEN_ADDR: ":8100"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+      PROFILES_SERVICE_URL: http://profiles:8020
+      LEDGER_SERVICE_URL: http://ledger:8030
+    depends_on:
+      postgres:
+        condition: service_healthy
+      profiles:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8100/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Sync (:8110) ───────────────────────────────────────────────────────────
+  sync:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: sync
+    environment:
+      SYNC_LISTEN_ADDR: ":8110"
+      LEDGER_SERVICE_URL: http://ledger:8030
+    depends_on:
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8110/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Reporting (:8120) ──────────────────────────────────────────────────────
+  reporting:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: reporting
+    environment:
+      REPORTING_LISTEN_ADDR: ":8120"
+      DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
+    <<: *db-deps
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8120/healthz || exit 1"]
+      <<: *http-healthcheck
+
+  # ── Gateway (:8000) — internet-facing via Traefik ──────────────────────────
+  gateway:
+    <<: *go-defaults
+    build:
+      <<: *go-build
+      args:
+        SERVICE: gateway
+    networks: [core, proxy]
+    environment:
+      GATEWAY_LISTEN_ADDR: ":8000"
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      AUTH_SERVICE_URL: http://auth:8010
+      PROFILES_SERVICE_URL: http://profiles:8020
+      LEDGER_SERVICE_URL: http://ledger:8030
+      WALLET_SERVICE_URL: http://wallet:8040
+      TICKETING_SERVICE_URL: http://ticketing:8050
+      PAYMENTS_SERVICE_URL: http://payments:8060
+      DEVICES_SERVICE_URL: http://devices:8070
+      CATALOG_SERVICE_URL: http://catalog:8080
+      ORDERS_SERVICE_URL: http://orders:8090
+      SESSIONS_SERVICE_URL: http://sessions:8100
+      SYNC_SERVICE_URL: http://sync:8110
+      REPORTING_SERVICE_URL: http://reporting:8120
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
+      <<: *http-healthcheck
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gateway.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.gateway.entrypoints=websecure"
+      - "traefik.http.routers.gateway.tls.certresolver=cloudflare"
+      - "traefik.http.routers.gateway.middlewares=secure-headers@file,api-ratelimit@file"
+      - "traefik.http.services.gateway.loadbalancer.server.port=8000"
+
+  # ── Admin Web — internet-facing via Traefik ────────────────────────────────
+  admin-web:
+    build:
+      context: ../web/admin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks: [core, proxy]
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET}
+      GATEWAY_URL: https://api.${DOMAIN}${TRAEFIK_PORT_SUFFIX}
+      AUTH_SERVICE_URL: http://auth:8010
+      ADMIN_ORIGIN: https://admin.${DOMAIN}${TRAEFIK_PORT_SUFFIX}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`admin.${DOMAIN}`)"
+      - "traefik.http.routers.admin.entrypoints=websecure"
+      - "traefik.http.routers.admin.tls.certresolver=cloudflare"
+      - "traefik.http.routers.admin.middlewares=secure-headers@file,admin-ratelimit@file"
+      - "traefik.http.services.admin.loadbalancer.server.port=3001"
+
+  # ── Prometheus (:9090) ──────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    networks: [core]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Grafana (:3000) — internet-facing via Traefik ───────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    restart: unless-stopped
+    networks: [core, proxy]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://grafana.${DOMAIN}${TRAEFIK_PORT_SUFFIX}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=cloudflare"
+      - "traefik.http.routers.grafana.middlewares=secure-headers@file"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"

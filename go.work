@@ -1,0 +1,19 @@
+go 1.22
+
+use (
+	./edge
+	./pkg
+	./services/auth
+	./services/catalog
+	./services/devices
+	./services/gateway
+	./services/ledger
+	./services/orders
+	./services/payments
+	./services/profiles
+	./services/reporting
+	./services/sessions
+	./services/sync
+	./services/ticketing
+	./services/wallet
+)

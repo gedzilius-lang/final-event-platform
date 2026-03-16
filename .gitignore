@@ -1,0 +1,54 @@
+# Secrets — never commit
+# Allow the placeholder to keep the directory in git; ignore everything inside it
+infra/secrets/*
+!infra/secrets/.gitkeep
+# Production env files (contain real credentials)
+infra/cloud.env
+infra/backup.env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Traefik ACME certificate storage
+infra/traefik/acme.json
+
+# Go build output
+/bin/
+/dist/
+*.exe
+
+# go.work.sum is a lockfile — it MUST be committed so workspace builds are reproducible.
+# Populate it locally with: go work sync
+# (omitted from ignore list intentionally)
+
+# Node
+node_modules/
+.next/
+web/guest/.next/
+web/admin/.next/
+web/guest/node_modules/
+web/admin/node_modules/
+
+# SQLite (edge dev database)
+*.db
+*.db-shm
+*.db-wal
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker
+*.log
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Grafana runtime data (volume-mounted, not source)
+infra/grafana/data/

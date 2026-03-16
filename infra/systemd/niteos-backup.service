@@ -1,0 +1,13 @@
+[Unit]
+Description=NiteOS Postgres backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/niteos
+EnvironmentFile=/opt/niteos/backup.env
+ExecStart=/opt/niteos/scripts/backup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=niteos-backup
