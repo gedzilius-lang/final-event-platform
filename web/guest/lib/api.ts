@@ -158,6 +158,8 @@ export interface UserProfile {
   email?: string
   role: string
   venue_id?: string
+  global_xp: number
+  global_level: number
   created_at?: string
 }
 
@@ -167,7 +169,7 @@ export interface LedgerEvent {
   amount_nc: number
   venue_id?: string
   reference_id?: string
-  created_at: string
+  occurred_at: string
 }
 
 export interface Order {
@@ -192,16 +194,6 @@ export interface CreateOrderRequest {
   guest_session_id?: string
   items: OrderItem[]
   idempotency_key: string
-}
-
-// ── Level / XP ────────────────────────────────────────────────────────────────
-// Derived client-side from ledger history until profiles service tracks XP.
-// 1 level per 500 NC spent. Stubbed at Level 1 if history unavailable.
-export function deriveLevel(totalSpendNC: number): { level: number; xpInLevel: number; xpToNext: number } {
-  const xpPerLevel = 500
-  const level = Math.floor(totalSpendNC / xpPerLevel) + 1
-  const xpInLevel = totalSpendNC % xpPerLevel
-  return { level, xpInLevel, xpToNext: xpPerLevel }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────

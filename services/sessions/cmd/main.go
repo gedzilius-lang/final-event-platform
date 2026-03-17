@@ -37,6 +37,7 @@ func main() {
 	mux.HandleFunc("GET /metrics", metrics.Handler("sessions"))
 	mux.HandleFunc("POST /checkin", h.Checkin)
 	mux.HandleFunc("POST /{session_id}/checkout", h.Checkout)
+	mux.HandleFunc("GET /guest/{user_id}", h.GetGuestSession)
 	mux.HandleFunc("GET /{session_id}", h.GetSession)
 	mux.HandleFunc("GET /venues/{venue_id}/active", h.ListActive)
 	mux.HandleFunc("POST /{session_id}/spend", h.IncrementSpend)

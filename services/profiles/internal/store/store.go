@@ -241,6 +241,67 @@ func (s *Store) UpsertVenueProfile(ctx context.Context, p UpsertVenueProfilePara
 	return vp, nil
 }
 
+// ── XP / Level ────────────────────────────────────────────────────────────────
+
+// XPPerLevel is the number of XP required per level boundary.
+// level = floor(xp / XPPerLevel) + 1
+const XPPerLevel = 500
+
+// AddGlobalXP atomically increments global_xp and recomputes global_level.
+func (s *Store) AddGlobalXP(ctx context.Context, userID string, xpDelta int) error {
+	if xpDelta <= 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE profiles.users
+		SET global_xp    = global_xp + $1,
+		    global_level = (global_xp + $1) / $2 + 1,
+		    updated_at   = now()
+		WHERE user_id = $3
+	`, xpDelta, XPPerLevel, userID)
+	return err
+}
+
+// AddLocalXP atomically increments local_xp and recomputes local_level for a venue profile.
+// If the venue profile does not exist, it's a no-op (will be created on next checkin).
+func (s *Store) AddLocalXP(ctx context.Context, userID, venueID string, xpDelta int) error {
+	if xpDelta <= 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE profiles.venue_profiles
+		SET local_xp    = local_xp + $1,
+		    local_level = (local_xp + $1) / $2 + 1
+		WHERE user_id = $3 AND venue_id = $4
+	`, xpDelta, XPPerLevel, userID, venueID)
+	return err
+}
+
+// GetUserByNFCUID fetches the user linked to a NiteTap by NFC UID.
+// Returns ErrNotFound if the UID is unknown or the tap is anonymous/revoked.
+func (s *Store) GetUserByNFCUID(ctx context.Context, nfcUID string) (*User, error) {
+	user := &User{}
+	var venueID sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT u.user_id, u.email, u.display_name, u.role, u.venue_id,
+		       u.global_xp, u.global_level, u.created_at, u.updated_at
+		FROM profiles.users u
+		JOIN profiles.nitetaps t ON t.user_id = u.user_id
+		WHERE t.nfc_uid = $1 AND t.status = 'active' AND t.is_anonymous = false
+	`, nfcUID).Scan(
+		&user.UserID, &user.Email, &user.DisplayName, &user.Role,
+		&venueID, &user.GlobalXP, &user.GlobalLevel, &user.CreatedAt, &user.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user by nfc uid: %w", err)
+	}
+	user.VenueID = venueID.String
+	return user, nil
+}
+
 // ── NiteTaps ──────────────────────────────────────────────────────────────────
 
 // GetNiteTap fetches a NiteTap by NFC UID.

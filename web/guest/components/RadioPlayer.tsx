@@ -1,7 +1,7 @@
 'use client'
-// Native radio player — replaces RadioEmbed iframe.
-// Streams from NEXT_PUBLIC_RADIO_STREAM_URL (defaults to stream.peoplewelike.club).
-// Fetches now-playing metadata from AzuraCast API (non-blocking, non-fatal).
+// Global persistent radio player — rendered in root layout, fixed at bottom.
+// Survives client-side navigation (App Router layout never unmounts).
+// Streams from NEXT_PUBLIC_RADIO_STREAM_URL; metadata from AzuraCast API.
 import { useState, useEffect, useRef } from 'react'
 
 const STREAM_URL =
@@ -12,7 +12,6 @@ const RADIO_API_URL =
 interface NowPlaying {
   title: string
   artist: string
-  isLive: boolean
 }
 
 async function fetchNowPlaying(): Promise<NowPlaying | null> {
@@ -23,14 +22,12 @@ async function fetchNowPlaying(): Promise<NowPlaying | null> {
     })
     if (!res.ok) return null
     const data = await res.json()
-    // AzuraCast returns an array; first element is the station
     const station = Array.isArray(data) ? data[0] : data
     const song = station?.now_playing?.song
     if (!song) return null
     return {
       title: song.title ?? 'People We Like Radio',
       artist: song.artist ?? '',
-      isLive: !!station?.live?.is_live,
     }
   } catch {
     return null
@@ -45,7 +42,6 @@ export default function RadioPlayer() {
   const [volume, setVolume] = useState(0.8)
 
   useEffect(() => {
-    // Initial fetch + refresh every 30s
     fetchNowPlaying().then(setNowPlaying)
     const interval = setInterval(() => fetchNowPlaying().then(setNowPlaying), 30_000)
     return () => clearInterval(interval)
@@ -79,17 +75,17 @@ export default function RadioPlayer() {
   }
 
   return (
-    <div className="card">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-nite-border bg-nite-surface/95 backdrop-blur-sm px-4 py-2 safe-area-inset-bottom">
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} preload="none" onEnded={() => setIsPlaying(false)} />
 
-      <div className="flex items-center gap-3">
+      <div className="max-w-lg mx-auto flex items-center gap-3">
         {/* Play / Pause button */}
         <button
           onClick={togglePlay}
           disabled={isLoading}
           aria-label={isPlaying ? 'Pause radio' : 'Play radio'}
-          className="shrink-0 w-10 h-10 rounded-full bg-nite-accent text-black flex items-center justify-center
+          className="shrink-0 w-8 h-8 rounded-full bg-nite-accent text-black flex items-center justify-center
                      hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 transition-colors"
         >
           {isLoading ? (
@@ -104,51 +100,33 @@ export default function RadioPlayer() {
         {/* Station info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold">People We Like Radio</span>
+            <span className="text-xs font-semibold truncate">
+              {nowPlaying
+                ? nowPlaying.artist
+                  ? `${nowPlaying.artist} — ${nowPlaying.title}`
+                  : nowPlaying.title
+                : 'People We Like Radio'}
+            </span>
             {isPlaying && (
-              <span className="inline-flex items-center gap-1 text-xs text-red-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                LIVE
-              </span>
+              <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
             )}
           </div>
-          {nowPlaying ? (
-            <p className="text-xs text-nite-muted truncate">
-              {nowPlaying.artist ? `${nowPlaying.artist} — ` : ''}{nowPlaying.title}
-            </p>
-          ) : (
-            <p className="text-xs text-nite-muted">
-              {isPlaying ? 'Streaming…' : 'Tap to tune in'}
-            </p>
-          )}
+          <p className="text-xs text-nite-muted">
+            {isPlaying ? 'Streaming live' : 'Tap to tune in'}
+          </p>
         </div>
 
         {/* Volume slider */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-xs text-nite-muted">🔈</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            aria-label="Volume"
-            className="w-16 accent-amber-500"
-          />
-        </div>
-      </div>
-
-      {/* External link */}
-      <div className="mt-2 flex justify-end">
-        <a
-          href="https://radio.peoplewelike.club"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-nite-muted hover:text-nite-text transition-colors"
-        >
-          Open in browser ↗
-        </a>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          aria-label="Volume"
+          className="w-16 accent-amber-500 shrink-0"
+        />
       </div>
     </div>
   )
@@ -156,7 +134,7 @@ export default function RadioPlayer() {
 
 function PlayIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
       <path d="M3 2.5l11 5.5-11 5.5V2.5z" />
     </svg>
   )
@@ -164,7 +142,7 @@ function PlayIcon() {
 
 function PauseIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
       <rect x="3" y="2" width="3.5" height="12" rx="1" />
       <rect x="9.5" y="2" width="3.5" height="12" rx="1" />
     </svg>

@@ -17,6 +17,7 @@ type sessStore interface {
 	OpenSession(ctx context.Context, userID, venueID, nfcUID, deviceID string) (*store.VenueSession, error)
 	CloseSession(ctx context.Context, sessionID string) (*store.VenueSession, error)
 	GetSession(ctx context.Context, sessionID string) (*store.VenueSession, error)
+	GetActiveSessionForUser(ctx context.Context, userID string) (*store.VenueSession, error)
 	ListActiveSessions(ctx context.Context, venueID string) ([]*store.VenueSession, error)
 	IncrementSpend(ctx context.Context, sessionID string, amountNC int) error
 }
@@ -69,8 +70,9 @@ func (h *Handler) Checkin(w http.ResponseWriter, r *http.Request) {
 		"reference_id":    sess.SessionID,
 	})
 
-	// Upsert venue profile (fire-and-forget)
+	// Upsert venue profile + award check-in XP (fire-and-forget)
 	go h.upsertVenueProfile(context.Background(), req.UserID, req.VenueID)
+	go h.awardCheckinXP(context.Background(), req.UserID, req.VenueID)
 
 	httputil.Respond(w, http.StatusCreated, sess)
 }
@@ -129,6 +131,30 @@ func (h *Handler) GetSession(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, sess)
 }
 
+// GetGuestSession handles GET /guest/{user_id} — returns the active session for a guest.
+// Accessible by the guest themselves or door/security/venue_admin/nitecore.
+func (h *Handler) GetGuestSession(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("user_id")
+	callerUID := middleware.UserID(r.Context())
+	role := middleware.UserRole(r.Context())
+	if callerUID != userID &&
+		role != "door_staff" && role != "security" &&
+		role != "venue_admin" && role != "nitecore" {
+		httputil.RespondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	sess, err := h.store.GetActiveSessionForUser(r.Context(), userID)
+	if err != nil {
+		if err == store.ErrNotFound {
+			httputil.RespondError(w, http.StatusNotFound, "no active session")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, sess)
+}
+
 func (h *Handler) ListActive(w http.ResponseWriter, r *http.Request) {
 	role := middleware.UserRole(r.Context())
 	if role != "door_staff" && role != "venue_admin" && role != "nitecore" {
@@ -168,6 +194,22 @@ func (h *Handler) writeLedgerEvent(ctx context.Context, payload map[string]any) 
 	req.Header.Set("X-Internal-Service", "sessions")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil { slog.Error("write ledger event", "err", err); return }
+	resp.Body.Close()
+}
+
+// awardCheckinXP awards 10 XP for a venue check-in — fire-and-forget.
+func (h *Handler) awardCheckinXP(ctx context.Context, userID, venueID string) {
+	payload := map[string]any{"xp_delta": 10, "venue_id": venueID}
+	data, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		h.profilesURL+"/users/"+userID+"/xp", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Internal-Service", "sessions")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("award checkin xp", "err", err)
+		return
+	}
 	resp.Body.Close()
 }
 

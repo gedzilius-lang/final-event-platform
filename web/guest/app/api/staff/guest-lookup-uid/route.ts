@@ -1,9 +1,8 @@
 // BFF: look up a guest by NiteTap UID — bar/door/security staff.
-// GAP: profiles service does not yet expose GET /users/by-nitetap/{uid}.
-// This endpoint stubs the lookup by returning a minimal "anonymous" response.
-// When the profiles service adds UID lookup, update this route to call it.
+// Calls GET /profiles/users/by-nfc-uid/{uid} via gateway.
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/session'
+import { backendFetch, UserProfile, ApiError } from '@/lib/api'
 
 const ALLOWED_ROLES = ['bartender', 'door_staff', 'security', 'venue_admin', 'nitecore']
 
@@ -24,11 +23,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'uid required' }, { status: 400 })
   }
 
-  // STUB: profiles service does not yet expose a by-NFC-UID lookup endpoint.
-  // Return 404 so callers fall back to anonymous order.
-  // TODO: call GET /profiles/users/by-nfc-uid/{uid} when available.
-  return NextResponse.json(
-    { error: 'NiteTap UID lookup not yet available — order will be anonymous' },
-    { status: 404 },
-  )
+  try {
+    const profile = await backendFetch<UserProfile>(
+      `/profiles/users/by-nfc-uid/${encodeURIComponent(uid)}`,
+      session.accessToken,
+    )
+    return NextResponse.json(profile)
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
+  }
 }

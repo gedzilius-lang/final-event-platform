@@ -272,6 +272,7 @@ services:
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
       LEDGER_SERVICE_URL: http://ledger:8030
       SESSIONS_SERVICE_URL: http://sessions:8100
+      PROFILES_SERVICE_URL: http://profiles:8020
     depends_on:
       postgres:
         condition: service_healthy

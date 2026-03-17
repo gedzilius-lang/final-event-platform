@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import RadioPlayer from '@/components/RadioPlayer'
 
 export const metadata: Metadata = {
   title: 'NiteOS — People We Like',
@@ -22,7 +23,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen pb-20">
+        {children}
+        {/* Global persistent radio player — fixed bottom, preserved across navigation */}
+        <RadioPlayer />
+      </body>
     </html>
   )
 }

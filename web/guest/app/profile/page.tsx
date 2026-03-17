@@ -7,11 +7,11 @@ import {
   getWalletBalance,
   getWalletHistory,
   getActiveSession,
-  ncToCHF,
-  deriveLevel,
   ApiError,
 } from '@/lib/api'
 import NavBar from '@/components/NavBar'
+
+const XP_PER_LEVEL = 500
 
 export default async function ProfilePage() {
   const session = await getSession()
@@ -30,15 +30,15 @@ export default async function ProfilePage() {
   const history = historyResult.status === 'fulfilled' ? historyResult.value.events : []
   const liveSession = activeSessionResult.status === 'fulfilled' ? activeSessionResult.value : null
 
-  // Derive level from total spend (order_paid events)
-  const totalSpendNC = history
-    .filter((e) => e.event_type === 'order_paid')
-    .reduce((sum, e) => sum + Math.abs(e.amount_nc), 0)
+  // XP/level from backend (profiles service is authoritative)
+  const globalXP = profile?.global_xp ?? 0
+  const level = profile?.global_level ?? 1
+  const xpInLevel = globalXP % XP_PER_LEVEL
+  const xpPct = Math.round((xpInLevel / XP_PER_LEVEL) * 100)
+
   const totalTopupNC = history
     .filter((e) => e.event_type === 'topup_confirmed')
     .reduce((sum, e) => sum + e.amount_nc, 0)
-  const { level, xpInLevel, xpToNext } = deriveLevel(totalSpendNC)
-  const xpPct = Math.round((xpInLevel / xpToNext) * 100)
 
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('de-CH', {
@@ -74,8 +74,8 @@ export default async function ProfilePage() {
           {/* XP bar */}
           <div className="mt-4">
             <div className="flex justify-between text-xs text-nite-muted mb-1">
-              <span>XP: {xpInLevel} / {xpToNext}</span>
-              <span>Level {level + 1} in {xpToNext - xpInLevel} NC spent</span>
+              <span>XP: {xpInLevel} / {XP_PER_LEVEL}</span>
+              <span>Level {level + 1} in {XP_PER_LEVEL - xpInLevel} XP</span>
             </div>
             <div className="h-2 rounded-full bg-nite-border overflow-hidden">
               <div
@@ -171,7 +171,7 @@ export default async function ProfilePage() {
                     <div>
                       <p className="text-sm font-medium">{eventLabel(e.event_type)}</p>
                       <p className="text-xs text-nite-muted">
-                        {new Date(e.created_at).toLocaleDateString('de-CH', {
+                        {new Date(e.occurred_at).toLocaleDateString('de-CH', {
                           day: 'numeric',
                           month: 'short',
                           hour: '2-digit',

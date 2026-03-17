@@ -27,10 +27,22 @@ type Store struct{ db *sql.DB }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
+// OpenSession creates a new venue session.
+// Invariant: only one open session per user per venue.
+// If an open session already exists for this user+venue, it is returned (idempotent).
 func (s *Store) OpenSession(ctx context.Context, userID, venueID, nfcUID, deviceID string) (*VenueSession, error) {
+	// Check for existing open session at this venue
+	existing, err := s.getOpenSessionForUserVenue(ctx, userID, venueID)
+	if err == nil {
+		return existing, nil // idempotent — return existing session
+	}
+	if err != ErrNotFound {
+		return nil, fmt.Errorf("open session check: %w", err)
+	}
+
 	out := &VenueSession{}
 	var tapUID, devID sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO sessions.venue_sessions (user_id, venue_id, nitetap_uid, checkin_device)
 		VALUES ($1,$2,NULLIF($3,''),NULLIF($4,'')::uuid)
 		RETURNING session_id, user_id, venue_id, COALESCE(nitetap_uid,''),
@@ -43,6 +55,42 @@ func (s *Store) OpenSession(ctx context.Context, userID, venueID, nfcUID, device
 	if err != nil { return nil, fmt.Errorf("open session: %w", err) }
 	out.NiteTapUID = tapUID.String
 	out.CheckinDevice = devID.String
+	return out, nil
+}
+
+// getOpenSessionForUserVenue returns the open session for a user+venue pair.
+func (s *Store) getOpenSessionForUserVenue(ctx context.Context, userID, venueID string) (*VenueSession, error) {
+	out := &VenueSession{}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT session_id, user_id, venue_id, COALESCE(nitetap_uid,''),
+		       opened_at, closed_at, total_spend_nc, COALESCE(checkin_device::text,''), status
+		FROM sessions.venue_sessions
+		WHERE user_id = $1 AND venue_id = $2 AND status = 'open'
+		ORDER BY opened_at DESC LIMIT 1
+	`, userID, venueID).Scan(
+		&out.SessionID, &out.UserID, &out.VenueID, &out.NiteTapUID,
+		&out.OpenedAt, &out.ClosedAt, &out.TotalSpendNC, &out.CheckinDevice, &out.Status,
+	)
+	if errors.Is(err, sql.ErrNoRows) { return nil, ErrNotFound }
+	if err != nil { return nil, fmt.Errorf("get open session for user venue: %w", err) }
+	return out, nil
+}
+
+// GetActiveSessionForUser returns the most recent open session for a user (any venue).
+func (s *Store) GetActiveSessionForUser(ctx context.Context, userID string) (*VenueSession, error) {
+	out := &VenueSession{}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT session_id, user_id, venue_id, COALESCE(nitetap_uid,''),
+		       opened_at, closed_at, total_spend_nc, COALESCE(checkin_device::text,''), status
+		FROM sessions.venue_sessions
+		WHERE user_id = $1 AND status = 'open'
+		ORDER BY opened_at DESC LIMIT 1
+	`, userID).Scan(
+		&out.SessionID, &out.UserID, &out.VenueID, &out.NiteTapUID,
+		&out.OpenedAt, &out.ClosedAt, &out.TotalSpendNC, &out.CheckinDevice, &out.Status,
+	)
+	if errors.Is(err, sql.ErrNoRows) { return nil, ErrNotFound }
+	if err != nil { return nil, fmt.Errorf("get active session for user: %w", err) }
 	return out, nil
 }
 

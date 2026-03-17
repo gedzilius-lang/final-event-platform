@@ -111,7 +111,7 @@ Traefik handles TLS via Cloudflare DNS-01 Let's Encrypt. Certs stored in `infra/
 
 ## Repository State
 
-Last verified: 2026-03-16
+Last verified: 2026-03-17
 
 | Phase | Status |
 |-------|--------|
@@ -124,11 +124,24 @@ Last verified: 2026-03-16
 | M3 — All 13 Go services | Complete (build clean, critical tests pass) |
 | M3 — Edge service | Complete (SQLite WAL, sync agent, catalog cache) |
 | M4 — Admin console (web/admin/) | Complete (all pages, BFF pattern, iron-session) |
-| M5 — infra/docker-compose.cloud.yml | Complete |
+| M5 — infra/docker-compose.cloud.yml | Complete (16 services, PROFILES_SERVICE_URL wired to orders) |
 | M5 — Traefik config | Complete |
 | M5 — Prometheus + Grafana stubs | Complete |
 | M5 — Scripts (preflight, healthcheck, smoke-test, backup, restore) | Complete |
 | M5 — Deployment docs | Complete |
+| Guest web (web/guest/) | Complete — see below |
+
+### Guest web capabilities (web/guest/)
+
+- **Framework**: Next.js 14 App Router, TypeScript, Tailwind, iron-session BFF (24h cookie)
+- **Guest surfaces**: home/landing, login, register, wallet (top-up), tickets, events, session, venues/[slug], profile
+- **Staff surfaces**: `/staff/door` (checkin flow), `/staff/bar` (POS + cart), `/staff/security` (guest lookup), `/staff/manager` (live ops)
+- **Persistent radio player**: global fixed-bottom HTML5 audio player in root layout; preserved across navigation
+- **XP/level**: backend-authoritative from `profiles.users.global_xp` / `global_level` — not client-derived
+- **NiteTap UID lookup**: `GET /profiles/users/by-nfc-uid/{uid}` wired via BFF (`/api/staff/guest-lookup-uid`)
+- **Active session query**: `GET /sessions/guest/{user_id}` — registered and accessible via gateway
+- **Ledger events**: `occurred_at` field used (not `created_at`)
+- **NC/CHF**: 1 NC = 1 CHF enforced end-to-end
 
 ### What is NOT yet done
 
@@ -136,7 +149,6 @@ Last verified: 2026-03-16
 |------|----------------|
 | GitHub remote + CI running | Repo not yet pushed to GitHub |
 | NiteOS VPS deployment | Blocked on GitHub push (for git clone) |
-| Guest web (web/guest/) | Not started — not required for admin-first pilot |
 | Android apps | Not started — scaffold only |
 | TWINT payment provider | Waiting for Swiss business account credentials |
 | Full Prometheus instrumentation | stdlib-only metrics now; `prometheus/client_golang` deferred |
@@ -145,9 +157,20 @@ Last verified: 2026-03-16
 | M6 — Pilot venue provisioning | After DNS cutover |
 | M7 — service-2 shared identity | Post-pilot |
 
+### Known Technical Debt
+
+| Item | Detail |
+|------|--------|
+| `security` role schema gap | Backend handlers and staff layout reference a `security` role. The `profiles.users` CHECK constraint does not include it — so the role can never be assigned. Handlers still allow it correctly (ready for when it's added). Fix: add `'security'` to the CHECK constraint in a future migration. |
+| Capacity tracking | `sessions.venue_sessions` has no per-venue capacity column. `ListActiveSessions` count is the only proxy. Requires schema addition + catalog service integration. |
+| Grafana dashboards | Four stub dashboards provisioned. Panels require real traffic data from a live deployment to populate meaningfully. |
+| Prometheus business metrics | `pkg/metrics` is stdlib-only (no histograms, no labels). Full instrumentation requires `prometheus/client_golang` dependency. |
+
 ---
 
 ## Port Reference (authoritative)
+
+Verified against Go source (`cmd/main.go` defaults) and `infra/docker-compose.cloud.yml`.
 
 | Service | Port | Notes |
 |---------|------|-------|
@@ -158,12 +181,12 @@ Last verified: 2026-03-16
 | wallet | 8040 | Internal only |
 | payments | 8050 | Internal + Stripe/TWINT webhooks via gateway |
 | ticketing | 8060 | Internal only |
-| orders | 8070 | Internal only |
+| devices | 8070 | Internal only |
 | catalog | 8080 | Internal only |
-| devices | 8090 | Internal only |
+| orders | 8090 | Internal only |
 | sessions | 8100 | Internal only |
-| reporting | 8110 | Internal only |
-| sync | 8120 | Internal + edge connections via gateway |
+| sync | 8110 | Internal + edge connections via gateway |
+| reporting | 8120 | Internal only |
 | guest-web | 3000 | os.peoplewelike.club |
 | admin-web | 3001 | admin.peoplewelike.club |
 | Grafana | 3100 | grafana.peoplewelike.club |
@@ -189,6 +212,8 @@ Last verified: 2026-03-16
 
 | Date | What changed | Who |
 |------|-------------|-----|
+| 2026-03-17 | Stabilization pass: port table corrected (orders=8090, devices=8070, sync=8110, reporting=8120); guest-web status updated to Complete; Known Technical Debt section added; `security` role gap documented | Claude Code |
+| 2026-03-17 | Guest web complete: persistent radio player (layout.tsx), XP/level backend-authoritative, NiteTap UID lookup live, session query endpoint registered, LedgerEvent.occurred_at fix, PROFILES_SERVICE_URL wired to orders service | Claude Code |
 | 2026-03-16 | Repo normalization: VPS label drift fixed, niteos.io → peoplewelike.club, DOMAIN_MODEL venue_id added, SERVICE_MAP updated to reflect actual topology, DEPLOY_NITEOS_VPS.md created, INFRA_STATE.md created | Claude Code |
 | 2026-03-15 | M4 admin console complete; M5 infra artifacts complete (docker-compose.cloud.yml, scripts, Grafana stubs, traefik config) | Claude Code |
 | 2026-03-15 | M3 all 13 services + edge complete; M0 hardening pass | Claude Code |

@@ -16,8 +16,11 @@ type profileStore interface {
 	CreateUser(ctx context.Context, email, passwordHash, displayName string) (*store.User, error)
 	GetUser(ctx context.Context, userID string) (*store.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*store.User, error)
+	GetUserByNFCUID(ctx context.Context, nfcUID string) (*store.User, error)
 	ListUsers(ctx context.Context, emailQuery string) ([]*store.User, error)
 	SetUserVenue(ctx context.Context, userID, venueID, role string) error
+	AddGlobalXP(ctx context.Context, userID string, xpDelta int) error
+	AddLocalXP(ctx context.Context, userID, venueID string, xpDelta int) error
 	GetVenueProfile(ctx context.Context, userID, venueID string) (*store.VenueProfile, error)
 	UpsertVenueProfile(ctx context.Context, p store.UpsertVenueProfileParams) (*store.VenueProfile, error)
 	GetNiteTap(ctx context.Context, nfcUID string) (*store.NiteTap, error)
@@ -158,6 +161,63 @@ func (h *Handler) PatchUserVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.store.GetUser(r.Context(), userID)
 	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	user.PasswordHash = ""
+	httputil.Respond(w, http.StatusOK, user)
+}
+
+// ── XP ────────────────────────────────────────────────────────────────────────
+
+// AddXP handles POST /users/{user_id}/xp — internal service call only.
+// Body: {"xp_delta": N, "venue_id": "..."} (venue_id is optional; used for local XP).
+// Called by orders service on order finalize, sessions service on check-in.
+func (h *Handler) AddXP(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Internal-Service") == "" {
+		httputil.RespondError(w, http.StatusForbidden, "internal endpoint")
+		return
+	}
+	userID := r.PathValue("user_id")
+	var req struct {
+		XPDelta int    `json:"xp_delta"`
+		VenueID string `json:"venue_id,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.XPDelta <= 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "xp_delta must be a positive integer")
+		return
+	}
+	if err := h.store.AddGlobalXP(r.Context(), userID, req.XPDelta); err != nil {
+		slog.Error("add global xp", "err", err)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if req.VenueID != "" {
+		if err := h.store.AddLocalXP(r.Context(), userID, req.VenueID, req.XPDelta); err != nil {
+			slog.Error("add local xp", "err", err)
+			// Non-fatal — global XP already written
+		}
+	}
+	httputil.Respond(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// GetUserByNFCUID handles GET /users/by-nfc-uid/{nfc_uid}
+// Accessible by bar staff, door staff, security, venue_admin, nitecore.
+func (h *Handler) GetUserByNFCUID(w http.ResponseWriter, r *http.Request) {
+	role := middleware.UserRole(r.Context())
+	allowed := role == "bartender" || role == "door_staff" || role == "security" ||
+		role == "venue_admin" || role == "nitecore"
+	if !allowed && r.Header.Get("X-Internal-Service") == "" {
+		httputil.RespondError(w, http.StatusForbidden, "staff role required")
+		return
+	}
+	nfcUID := r.PathValue("nfc_uid")
+	user, err := h.store.GetUserByNFCUID(r.Context(), nfcUID)
+	if err != nil {
+		if err == store.ErrNotFound {
+			httputil.RespondError(w, http.StatusNotFound, "no user linked to this tap")
+			return
+		}
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

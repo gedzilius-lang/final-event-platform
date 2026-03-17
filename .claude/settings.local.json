@@ -3,7 +3,13 @@
     "allow": [
       "Bash(ls:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(go build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(chmod +x scripts/bootstrap-nitecore.sh scripts/pilot-bootstrap.sh)",
+      "Bash(git update-index:*)"
     ]
   }
 }

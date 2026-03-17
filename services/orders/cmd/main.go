@@ -36,7 +36,7 @@ func main() {
 	db.SetMaxIdleConns(5)
 
 	s := store.New(db)
-	h := handler.New(s, cfg.LedgerServiceURL, cfg.SessionsServiceURL)
+	h := handler.New(s, cfg.LedgerServiceURL, cfg.SessionsServiceURL, cfg.ProfilesServiceURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -77,6 +77,7 @@ type config struct {
 	DatabaseURL        string
 	LedgerServiceURL   string
 	SessionsServiceURL string
+	ProfilesServiceURL string
 }
 
 func configFromEnv() config {
@@ -85,6 +86,7 @@ func configFromEnv() config {
 		DatabaseURL:        envOrDefault("DATABASE_URL", "postgres://niteos:devpassword@localhost:5432/niteos?sslmode=disable"),
 		LedgerServiceURL:   envOrDefault("LEDGER_SERVICE_URL", "http://localhost:8030"),
 		SessionsServiceURL: envOrDefault("SESSIONS_SERVICE_URL", "http://localhost:8100"),
+		ProfilesServiceURL: envOrDefault("PROFILES_SERVICE_URL", "http://localhost:8020"),
 	}
 }
 

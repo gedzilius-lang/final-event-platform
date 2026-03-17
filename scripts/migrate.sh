@@ -2,7 +2,16 @@
 # Run all Postgres migrations for NiteOS.
 # Uses psql directly — no golang-migrate binary required.
 # Files are applied in numeric order within each schema directory.
-# Requires: psql on PATH, dev stack running (make dev-up).
+#
+# The reporting service has NO migration directory — it is read-only,
+# querying ledger, sessions, and payments schemas.
+#
+# Usage:
+#   DATABASE_URL=postgres://niteos:<pw>@localhost:5432/niteos?sslmode=disable \
+#   bash scripts/migrate.sh
+#
+# Or with default local dev URL (dev stack must be running):
+#   bash scripts/migrate.sh
 set -euo pipefail
 
 DB="${DATABASE_URL:-postgres://niteos:devpassword@localhost:5432/niteos?sslmode=disable}"

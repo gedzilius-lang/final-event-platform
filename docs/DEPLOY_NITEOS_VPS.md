@@ -173,38 +173,74 @@ Manual checks:
 
 ## 9. First pilot venue setup
 
-After the stack is healthy, create the pilot venue and admin user:
+Two scripts handle this in sequence. Run them **after** the stack is healthy.
+
+### 9a. Bootstrap the nitecore superuser (one-time, first deployment only)
+
+The nitecore user must exist in the DB before the API is usable. Run this against the
+Postgres container (stack does not need to be fully up — only postgres service needed):
 
 ```bash
-# 1. Register the venue_admin user (via admin console or curl):
-curl -s -X POST https://api.peoplewelike.club/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@venue-name.com","password":"STRONG_PASSWORD","display_name":"Venue Admin"}'
-# Returns: {"user_id":"...","access_token":"..."}
+# Start only postgres:
+docker compose -f infra/docker-compose.cloud.yml --env-file infra/cloud.env up -d postgres
 
-# 2. Store the nitecore token (login as nitecore):
-NITECORE_TOKEN=$(curl -s -X POST https://api.peoplewelike.club/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"nitecore@peoplewelike.club","password":"NITECORE_PASSWORD"}' \
-  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+# Wait ~10s, then create nitecore user:
+NITECORE_EMAIL=nitecore@peoplewelike.club \
+NITECORE_PASSWORD=<strong_password_min_16_chars> \
+NITECORE_DISPLAY_NAME="NiteOS Admin" \
+bash scripts/bootstrap-nitecore.sh
 
-# 3. Create venue in catalog:
-VENUE_ID=$(curl -s -X POST https://api.peoplewelike.club/catalog/venues \
-  -H "Authorization: Bearer $NITECORE_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Venue Name","slug":"venue-name","city":"Zurich","capacity":200,"staff_pin":"1234","timezone":"Europe/Zurich"}' \
-  | grep -o '"venue_id":"[^"]*"' | cut -d'"' -f4)
-echo "Venue ID: $VENUE_ID"
-
-# 4. Assign venue_admin role + venue_id to the user:
-USER_ID="<user_id from step 1>"
-curl -s -X PATCH https://api.peoplewelike.club/profiles/users/$USER_ID/venue \
-  -H "Authorization: Bearer $NITECORE_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d "{\"venue_id\":\"$VENUE_ID\",\"role\":\"venue_admin\"}"
-
-# 5. Login to admin console at https://admin.peoplewelike.club with venue_admin credentials
+# Then start the full stack:
+make cloud-up
 ```
+
+Requirements for `bootstrap-nitecore.sh`:
+- Python3 with `bcrypt` package (`pip3 install bcrypt`) **or** `htpasswd` (`apt-get install apache2-utils`)
+- Either `DATABASE_URL` env var set, or `infra/cloud.env` present (uses `docker compose exec`)
+
+### 9b. Create pilot venue + staff + catalog (one-time, after stack is up)
+
+```bash
+API_BASE=https://api.peoplewelike.club \
+NITECORE_EMAIL=nitecore@peoplewelike.club \
+NITECORE_PASSWORD=<nitecore_password> \
+VENUE_NAME="People We Like" \
+VENUE_SLUG=people-we-like \
+VENUE_CITY=Zurich \
+VENUE_CAPACITY=300 \
+VENUE_ADDRESS="Langstrasse 1, 8004 Zürich" \
+STAFF_PIN=<venue_pin> \
+ADMIN_EMAIL=admin@peoplewelike.club \
+ADMIN_PASSWORD=<strong_password> \
+BARTENDER_EMAIL=bar@peoplewelike.club \
+BARTENDER_PASSWORD=<strong_password> \
+DOOR_EMAIL=door@peoplewelike.club \
+DOOR_PASSWORD=<strong_password> \
+bash scripts/pilot-bootstrap.sh
+```
+
+This creates:
+- The venue in the catalog with standard items (Entry 20 NC, Beer 8 NC, Cocktail 15 NC, Water 4 NC, Shot 6 NC, Soft Drink 4 NC)
+- One `venue_admin`, one `bartender`, one `door_staff` account — each scoped to the venue
+- Prints all IDs and access URLs on completion
+
+### 9c. Verify and hand off
+
+```bash
+# Full smoke test (creates transient test data, does NOT touch pilot venue):
+NITECORE_EMAIL=nitecore@peoplewelike.club \
+NITECORE_PASSWORD=<password> \
+bash scripts/smoke-test-pilot.sh
+```
+
+Then walk through the pilot flow with real accounts:
+
+```
+Operator guide: docs/PILOT_FLOW.md
+```
+
+Staff log in at `https://os.peoplewelike.club` with their assigned credentials.
+Admin console: `https://admin.peoplewelike.club`
 
 ---
 

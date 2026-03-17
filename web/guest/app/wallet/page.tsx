@@ -6,7 +6,7 @@ import { getWalletBalance, ncToCHF, ApiError } from '@/lib/api'
 import NavBar from '@/components/NavBar'
 import TopUpButton from './TopUpButton'
 
-// Top-up amounts in CHF. Each gives that many * 100 NC.
+// Top-up amounts in CHF. 1 CHF = 1 NC (fixed peg).
 const TOPUP_AMOUNTS_CHF = [10, 20, 50, 100]
 
 interface Props {

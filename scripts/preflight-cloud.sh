@@ -132,7 +132,9 @@ for f in "${REQUIRED_FILES[@]}"; do
 done
 
 # ── 8. Script executability ────────────────────────────────────────────────────
-for s in scripts/migrate.sh scripts/backup.sh scripts/restore.sh; do
+for s in scripts/migrate.sh scripts/backup.sh scripts/restore.sh \
+          scripts/bootstrap-nitecore.sh scripts/pilot-bootstrap.sh \
+          scripts/smoke-test-pilot.sh scripts/healthcheck-cloud.sh; do
   if [[ ! -x "$REPO_ROOT/$s" ]]; then
     warn "$s is not executable — run: chmod +x $s"
   fi

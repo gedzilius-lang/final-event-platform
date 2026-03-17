@@ -3,9 +3,10 @@
 // Unauthenticated: landing / CTA.
 import Link from 'next/link'
 import { getSession } from '@/lib/session'
-import { getWalletBalance, getVenues, getActiveSession, getWalletHistory, deriveLevel, ncToCHF } from '@/lib/api'
+import { getWalletBalance, getVenues, getActiveSession, getUserProfile, ncToCHF } from '@/lib/api'
 import NavBar from '@/components/NavBar'
-import RadioPlayer from '@/components/RadioPlayer'
+
+const XP_PER_LEVEL = 500
 
 export default async function Home() {
   const session = await getSession()
@@ -15,25 +16,24 @@ export default async function Home() {
     return <LandingPage />
   }
 
-  const [walletResult, venuesResult, activeSessionResult, historyResult] =
+  const [walletResult, venuesResult, activeSessionResult, profileResult] =
     await Promise.allSettled([
       getWalletBalance(session.userId, session.accessToken),
       getVenues(session.accessToken),
       getActiveSession(session.userId, session.accessToken),
-      getWalletHistory(session.userId, session.accessToken),
+      getUserProfile(session.userId, session.accessToken),
     ])
 
   const balance = walletResult.status === 'fulfilled' ? walletResult.value.balance_nc : null
   const venues = venuesResult.status === 'fulfilled' ? venuesResult.value.venues : []
   const liveSession = activeSessionResult.status === 'fulfilled' ? activeSessionResult.value : null
-  const history = historyResult.status === 'fulfilled' ? historyResult.value.events : []
+  const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
 
-  // Level derived from total spend in history
-  const totalSpendNC = history
-    .filter((e) => e.event_type === 'order_paid')
-    .reduce((sum, e) => sum + Math.abs(e.amount_nc), 0)
-  const { level, xpInLevel, xpToNext } = deriveLevel(totalSpendNC)
-  const xpPct = Math.round((xpInLevel / xpToNext) * 100)
+  // XP/level from profiles service (authoritative)
+  const level = profile?.global_level ?? 1
+  const globalXP = profile?.global_xp ?? 0
+  const xpInLevel = globalXP % XP_PER_LEVEL
+  const xpPct = Math.round((xpInLevel / XP_PER_LEVEL) * 100)
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -72,7 +72,7 @@ export default async function Home() {
               />
             </div>
             <p className="text-xs text-nite-muted mt-1">
-              {xpInLevel}/{xpToNext} XP to Level {level + 1}
+              {xpInLevel}/{XP_PER_LEVEL} XP to Level {level + 1}
             </p>
           </div>
         </div>
@@ -155,9 +155,6 @@ export default async function Home() {
             <p className="text-xs font-medium mt-1">Profile</p>
           </Link>
         </section>
-
-        {/* Radio */}
-        <RadioPlayer />
       </main>
     </div>
   )
@@ -187,10 +184,6 @@ function LandingPage() {
         <p className="text-nite-muted text-xs mt-8">
           Already at a venue? Tap your NiteTap at the entrance.
         </p>
-      </div>
-
-      <div className="max-w-lg mx-auto w-full px-4 pb-6">
-        <RadioPlayer />
       </div>
 
       <footer className="py-5 text-center text-nite-muted text-xs border-t border-nite-border">

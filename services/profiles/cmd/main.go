@@ -51,7 +51,9 @@ func main() {
 	mux.HandleFunc("GET /users", h.ListUsers)
 	mux.HandleFunc("GET /users/{user_id}", h.GetUser)
 	mux.HandleFunc("GET /users/by-email/{email}", h.GetUserByEmail)
+	mux.HandleFunc("GET /users/by-nfc-uid/{nfc_uid}", h.GetUserByNFCUID)
 	mux.HandleFunc("PATCH /users/{user_id}/venue", h.PatchUserVenue)
+	mux.HandleFunc("POST /users/{user_id}/xp", h.AddXP)
 
 	// NiteTap routes (called by sessions, orders services)
 	mux.HandleFunc("GET /nitetaps/{nfc_uid}", h.GetNiteTap)

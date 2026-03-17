@@ -25,10 +25,11 @@ type Handler struct {
 	store       ordersStore
 	ledgerURL   string
 	sessionsURL string
+	profilesURL string
 }
 
-func New(s ordersStore, ledgerURL, sessionsURL string) *Handler {
-	return &Handler{store: s, ledgerURL: ledgerURL, sessionsURL: sessionsURL}
+func New(s ordersStore, ledgerURL, sessionsURL, profilesURL string) *Handler {
+	return &Handler{store: s, ledgerURL: ledgerURL, sessionsURL: sessionsURL, profilesURL: profilesURL}
 }
 
 type createOrderReq struct {
@@ -139,6 +140,10 @@ func (h *Handler) FinalizeOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go h.incrementSessionSpend(context.Background(), ord.GuestSessionID, ord.TotalNC)
+	// Award XP: 1 NC spent = 1 XP, fire-and-forget
+	if req.GuestUserID != "" && ord.TotalNC > 0 {
+		go h.awardXP(context.Background(), req.GuestUserID, ord.VenueID, ord.TotalNC)
+	}
 
 	httputil.Respond(w, http.StatusOK, out)
 }
@@ -236,6 +241,9 @@ func (h *Handler) writeLedgerEvent(ctx context.Context, payload map[string]any) 
 }
 
 func (h *Handler) incrementSessionSpend(ctx context.Context, sessionID string, amountNC int) {
+	if sessionID == "" {
+		return
+	}
 	data, _ := json.Marshal(map[string]int{"amount_nc": amountNC})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
 		h.sessionsURL+"/"+sessionID+"/spend", bytes.NewReader(data))
@@ -244,6 +252,29 @@ func (h *Handler) incrementSessionSpend(ctx context.Context, sessionID string, a
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Error("increment session spend", "err", err)
+		return
+	}
+	resp.Body.Close()
+}
+
+// awardXP calls profiles service to increment XP — fire-and-forget, non-fatal.
+// 1 NC spent on an order = 1 XP global + 1 XP local (venue-scoped).
+func (h *Handler) awardXP(ctx context.Context, userID, venueID string, xpDelta int) {
+	if h.profilesURL == "" || userID == "" || xpDelta <= 0 {
+		return
+	}
+	payload := map[string]any{"xp_delta": xpDelta}
+	if venueID != "" {
+		payload["venue_id"] = venueID
+	}
+	data, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		h.profilesURL+"/users/"+userID+"/xp", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Internal-Service", "orders")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("award xp", "err", err)
 		return
 	}
 	resp.Body.Close()

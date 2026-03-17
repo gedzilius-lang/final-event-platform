@@ -57,20 +57,21 @@ ON CONFLICT (venue_id) DO NOTHING;
 -- ============================================================
 -- Catalog: catalog_items
 -- ============================================================
+-- Prices in NC (1 NC = 1 CHF — fixed peg, PRODUCT_BLUEPRINT §NiteCoin)
 INSERT INTO catalog.catalog_items (item_id, venue_id, name, category, price_nc, icon, display_order, is_active)
 VALUES
   ('00000000-0000-0000-0002-000000000001',
    '00000000-0000-0000-0001-000000000001',
-   'Draft Beer', 'drinks', 800, '🍺', 1, true),
+   'Draft Beer', 'drinks', 8, '🍺', 1, true),
   ('00000000-0000-0000-0002-000000000002',
    '00000000-0000-0000-0001-000000000001',
-   'Cocktail', 'drinks', 1500, '🍹', 2, true),
+   'Cocktail', 'drinks', 15, '🍹', 2, true),
   ('00000000-0000-0000-0002-000000000003',
    '00000000-0000-0000-0001-000000000001',
-   'Water', 'drinks', 300, '💧', 3, true),
+   'Water', 'drinks', 4, '💧', 3, true),
   ('00000000-0000-0000-0002-000000000004',
    '00000000-0000-0000-0001-000000000001',
-   'Entry Fee', 'entry', 2000, '🎟️', 10, true)
+   'Entry Fee', 'entry', 20, '🎟️', 10, true)
 ON CONFLICT (item_id) DO NOTHING;
 
 -- ============================================================
@@ -102,7 +103,7 @@ VALUES
 ON CONFLICT (device_id) DO NOTHING;
 
 -- ============================================================
--- Ledger: seed the test guest with 500 NC (5 CHF topup)
+-- Ledger: seed the test guest with 500 NC (500 CHF — 1 NC = 1 CHF)
 -- ============================================================
 INSERT INTO ledger.ledger_events
   (event_id, event_type, user_id, venue_id, amount_nc, amount_chf,
@@ -112,7 +113,7 @@ VALUES
    'topup_confirmed',
    '00000000-0000-0000-0000-000000000005',
    '00000000-0000-0000-0001-000000000001',
-   50000,
+   500,
    500.00,
    'seed:guest-initial-topup',
    'payments',
