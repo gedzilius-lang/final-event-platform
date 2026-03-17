@@ -1,22 +1,31 @@
 // Next.js middleware — runs on the edge before every matched request.
 // 1. Route protection: redirect unauthenticated users to /login.
 // 2. CSRF: reject cross-origin POST/PUT/DELETE requests to /api/* routes.
+// 3. Staff routes: require authentication (role enforcement happens server-side).
 import { NextRequest, NextResponse } from 'next/server'
 
 export const config = {
   matcher: [
-    // Protect these routes
     '/wallet/:path*',
     '/tickets/:path*',
     '/events/:path*',
     '/session/:path*',
     '/venues/:path*',
-    // CSRF check on all BFF API routes
+    '/profile/:path*',
+    '/staff/:path*',
     '/api/:path*',
   ],
 }
 
-const PROTECTED_ROUTES = ['/wallet', '/tickets', '/events', '/session', '/venues']
+const PROTECTED_ROUTES = [
+  '/wallet',
+  '/tickets',
+  '/events',
+  '/session',
+  '/venues',
+  '/profile',
+  '/staff',
+]
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -24,10 +33,7 @@ export function middleware(req: NextRequest) {
 
   // ── CSRF check for mutating BFF API routes ────────────────────────────────
   if (pathname.startsWith('/api/') && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-    // Health endpoint is exempt
     if (pathname === '/api/health') return NextResponse.next()
-    // Stripe webhook is exempt (Stripe sends from different origin with signature)
-    // — no webhook endpoint on guest BFF, but keep rule explicit
 
     const origin = req.headers.get('origin')
     const host = req.headers.get('host')

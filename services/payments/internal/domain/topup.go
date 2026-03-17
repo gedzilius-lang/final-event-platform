@@ -1,5 +1,5 @@
 // Package domain defines payment types.
-// NC (NiteCoins) are always integer. 1 CHF = 100 NC (100 NC per franc).
+// NC (NiteCoins) are always integer. 1 NC = 1 CHF — fixed peg (PRODUCT_BLUEPRINT §NiteCoin).
 package domain
 
 import "time"
@@ -24,7 +24,7 @@ type Topup struct {
 	TopupID          string     `json:"topup_id"`
 	UserID           string     `json:"user_id"`
 	AmountCHF        float64    `json:"amount_chf"`
-	AmountNC         int        `json:"amount_nc"` // = AmountCHF * 100
+	AmountNC         int        `json:"amount_nc"` // = AmountCHF (1:1 peg)
 	Provider         string     `json:"provider"`
 	ProviderIntentID string     `json:"provider_intent_id"`
 	Status           string     `json:"status"`
@@ -33,9 +33,9 @@ type Topup struct {
 	ConfirmedAt      *time.Time `json:"confirmed_at,omitempty"`
 }
 
-// CHFToNC converts CHF to NiteCoins. 1 CHF = 100 NC.
+// CHFToNC converts CHF to NiteCoins. 1 CHF = 1 NC (fixed peg, PRODUCT_BLUEPRINT §NiteCoin).
 func CHFToNC(chf float64) int {
-	return int(chf * 100)
+	return int(chf)
 }
 
 // CreateIntentRequest is the body for POST /topup/intent.

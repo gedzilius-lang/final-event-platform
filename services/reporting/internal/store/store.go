@@ -108,12 +108,12 @@ type TopupSummary struct {
 func (s *Store) GetTopupSummary(ctx context.Context, from, to time.Time) (*TopupSummary, error) {
 	r := &TopupSummary{PeriodFrom: from, PeriodTo: to}
 
-	// amount_nc is derived: 1 CHF = 100 NC
+	// amount_nc is derived: 1 CHF = 1 NC (fixed peg, PRODUCT_BLUEPRINT §NiteCoin)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 		    COUNT(*),
 		    COALESCE(SUM(amount_chf), 0),
-		    COALESCE(SUM(amount_chf * 100)::int, 0)
+		    COALESCE(SUM(amount_chf)::int, 0)
 		FROM payments.payment_intents
 		WHERE status IN ('confirmed', 'captured')
 		  AND confirmed_at >= $1

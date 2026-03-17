@@ -425,6 +425,8 @@ services:
       AUTH_SERVICE_URL: http://auth:8010
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       NEXT_PUBLIC_SITE_URL: https://os.${DOMAIN}${TRAEFIK_PORT_SUFFIX}
+      NEXT_PUBLIC_RADIO_STREAM_URL: ${NEXT_PUBLIC_RADIO_STREAM_URL:-https://stream.peoplewelike.club/stream}
+      NEXT_PUBLIC_RADIO_API_URL: ${NEXT_PUBLIC_RADIO_API_URL:-https://radio.peoplewelike.club}
     depends_on:
       gateway:
         condition: service_healthy

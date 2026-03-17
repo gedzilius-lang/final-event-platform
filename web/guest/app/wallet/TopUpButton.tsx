@@ -51,7 +51,7 @@ export default function TopUpButton({ amountChf }: Props) {
     }
   }
 
-  const ncAmount = amountChf * 100
+  const ncAmount = amountChf // 1 NC = 1 CHF
 
   return (
     <>

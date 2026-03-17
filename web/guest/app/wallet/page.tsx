@@ -72,7 +72,7 @@ export default async function WalletPage({ searchParams }: Props) {
         <section>
           <h2 className="text-lg font-semibold mb-1">Top up</h2>
           <p className="text-sm text-nite-muted mb-4">
-            Add NiteCoins via card payment. 1 CHF = 100 NC.
+            Add NiteCoins via card payment. 1 CHF = 1 NC.
           </p>
           <div className="grid grid-cols-2 gap-3">
             {TOPUP_AMOUNTS_CHF.map((amount) => (
@@ -85,7 +85,7 @@ export default async function WalletPage({ searchParams }: Props) {
         <section className="card space-y-2 text-sm">
           <h3 className="font-semibold">How NiteCoins work</h3>
           <ul className="space-y-1.5 text-nite-muted">
-            <li>• 100 NC = 1 CHF — fixed peg, no exchange risk</li>
+            <li>• 1 NC = 1 CHF — fixed peg, no exchange risk</li>
             <li>• Pay at any NiteKiosk by tapping your NiteTap wristband</li>
             <li>• Balance never expires while your account is active</li>
             <li>• Unspent NC refundable on request (Swiss MPV regulation)</li>

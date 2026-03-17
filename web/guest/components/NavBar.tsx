@@ -1,7 +1,6 @@
 // Top navigation bar — server component.
 import Link from 'next/link'
 import LogoutButton from './LogoutButton'
-import { ncToCHF } from '@/lib/api'
 
 interface Props {
   displayName: string
@@ -10,9 +9,7 @@ interface Props {
 
 export default function NavBar({ displayName, balance }: Props) {
   const balanceLabel =
-    balance !== null
-      ? `${balance.toLocaleString()} NC`
-      : '—'
+    balance !== null ? `${balance.toLocaleString()} NC` : '—'
 
   return (
     <nav className="sticky top-0 z-10 bg-nite-bg/95 backdrop-blur border-b border-nite-border">
@@ -22,7 +19,7 @@ export default function NavBar({ displayName, balance }: Props) {
           🌃 <span className="text-nite-accent">NiteOS</span>
         </Link>
 
-        {/* Right: balance + user */}
+        {/* Right: balance + user menu */}
         <div className="flex items-center gap-2">
           <Link
             href="/wallet"
@@ -34,13 +31,14 @@ export default function NavBar({ displayName, balance }: Props) {
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Bottom tab bar */}
       <div className="flex border-t border-nite-border">
         {[
           { href: '/', label: '🏠', text: 'Home' },
           { href: '/events', label: '🏙️', text: 'Events' },
           { href: '/tickets', label: '🎟️', text: 'Tickets' },
           { href: '/wallet', label: '💰', text: 'Wallet' },
+          { href: '/profile', label: '👤', text: 'Profile' },
         ].map(({ href, label, text }) => (
           <Link
             key={href}
