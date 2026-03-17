@@ -1,15 +1,16 @@
 # Multi-stage Next.js 14 production build for NiteOS Guest web app.
 # Uses standalone output mode — self-contained node server.
+# Builder uses Debian-based Node (glibc) so the SWC native binary works correctly.
 
-FROM node:20-alpine AS deps
+FROM node:20-slim AS deps
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev --ignore-scripts
+RUN npm install --omit=dev
 
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json ./
-RUN npm install --ignore-scripts
+RUN npm install
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Placeholder values for build — overridden at runtime

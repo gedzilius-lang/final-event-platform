@@ -1,15 +1,16 @@
 # Multi-stage Next.js 14 production build for NiteOS Admin console.
 # Uses standalone output mode — self-contained node server, no separate next start needed.
+# Builder uses Debian-based Node (glibc) so the SWC native binary works correctly.
 
-FROM node:20-alpine AS deps
+FROM node:20-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --omit=dev
 
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Placeholder values required for build-time type-check only; overridden at runtime.

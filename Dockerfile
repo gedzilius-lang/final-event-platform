@@ -25,7 +25,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /service ./services/${SERVICE}/cmd/...
 
-# Minimal runtime image — no shell, no package manager.
-FROM gcr.io/distroless/static-debian12:nonroot
+# Alpine runtime — minimal footprint with shell+wget for healthchecks.
+FROM alpine:3.19
+RUN apk add --no-cache wget ca-certificates \
+ && addgroup -S niteos \
+ && adduser  -S -G niteos niteos
 COPY --from=builder /service /service
+USER niteos
 ENTRYPOINT ["/service"]

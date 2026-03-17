@@ -9,7 +9,7 @@ Updated as work progresses. Use this file to orient any new session or handover.
 
 | Role | IP | OS | Purpose |
 |------|----|----|---------|
-| **NiteOS VPS** | `31.97.126.86` | Ubuntu 22.04 LTS | NiteOS Cloud Core runtime (target, not yet deployed) |
+| **NiteOS VPS** | `31.97.126.86` | Ubuntu 22.04 LTS | NiteOS Cloud Core runtime — **M6 live** |
 | **Radio VPS** | `72.60.181.89` | Ubuntu 22.04 LTS | Radio + Market + More runtime (stable, do not touch) |
 
 **VPS naming rule:** Do not use "VPS A / VPS B" labels — they were ambiguous. Use role names or IPs directly.
@@ -18,57 +18,59 @@ Updated as work progresses. Use this file to orient any new session or handover.
 
 ## NiteOS VPS — 31.97.126.86
 
-### What has been established
+### Current State — M6 Live (2026-03-17)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| OS | Ubuntu 22.04.5 LTS | Kernel 5.15.0-164-generic |
-| Docker | Installed (v29.2.1, Compose v5.0.2) | Running, enabled at boot |
-| SSH hardening | Done | Key-only root login, GSSAPI/DNS disabled, fail2ban, UFW rate limit on port 22 |
-| Swap | 4 GB added | Stabilizes Docker + Go runtime on low-RAM VPS |
-| UFW firewall | Active | Allow: 22, 80, 443, 8080, 8443, 1935 |
-| nginx (host) | Active on :80/:443 | Routes HTTPS → Traefik for NiteOS subdomains |
-| nginx vhosts configured | Yes | api.peoplewelike.club, admin.peoplewelike.club, grafana.peoplewelike.club, traefik.peoplewelike.club |
-| Traefik | Not running | Will run in Docker once NiteOS stack is deployed |
-| /opt/niteos | ABSENT | Repo not yet cloned; stack not deployed |
-| cloud.env | ABSENT | Not yet configured |
-| JWT keys | ABSENT | Not yet generated on this machine |
-| acme.json | ABSENT | Not yet created |
-| Postgres (NiteOS) | ABSENT | No pgdata volume, no schemas |
-| Redis (NiteOS) | ABSENT | Not running |
-| Backup timer | ABSENT | niteos-backup.timer not installed |
-| Disk free (/) | ~35 GB | Sufficient for full stack |
+| OS | Ubuntu 22.04.5 LTS | Kernel 5.15.0-170-generic |
+| Docker | v29.2.1, Compose v5.0.2 | Running, enabled at boot |
+| SSH hardening | Done | Key-only root login, fail2ban, UFW |
+| UFW firewall | Active | Allow: 22, 80, 443 |
+| Traefik | **v3.6 running** | Direct on :80/:443; Docker provider + file provider |
+| /opt/niteos | Present — branch `main` @ M6 | 20 containers healthy |
+| cloud.env | Present | Real secrets, not in git |
+| JWT keys | Present | `infra/secrets/jwt_{private,public}_key.pem` |
+| acme.json | In `traefik-acme` Docker volume | 6 LE certs via Cloudflare DNS-01 |
+| Postgres | healthy | pgdata volume; all schemas migrated |
+| Redis | healthy | password-protected |
 
-### What remains before first deployment
+**All 20 containers healthy** — 13 Go services, traefik, postgres, redis, grafana, prometheus, guest-web, admin-web.
 
-1. Push repo to GitHub (enables `git clone` from VPS)
-2. Clone repo to `/opt/niteos` on NiteOS VPS
-3. Copy `infra/cloud.env.example` → `infra/cloud.env`, fill in all values
-4. Generate JWT keys (`infra/secrets/`)
-5. Create `infra/traefik/acme.json` with `chmod 600`
-6. Run `bash scripts/preflight-cloud.sh`
-7. Start Postgres: `docker compose ... up -d postgres`
-8. Run migrations: `bash scripts/migrate.sh`
-9. Start full stack: `make cloud-up`
-10. Verify: `bash scripts/healthcheck-cloud.sh`
-11. Smoke test: `NITECORE_PASSWORD=<pw> bash scripts/smoke-test-pilot.sh`
-12. Enable backup timer: install `infra/systemd/niteos-backup.{service,timer}`
+### Live endpoints
 
-See: `docs/DEPLOY_NITEOS_VPS.md` for the full runbook.
+| URL | Response | Backend |
+|-----|----------|---------|
+| `https://os.peoplewelike.club` | 200 | infra-guest-web-1:3000 |
+| `https://www.peoplewelike.club` | 200 | infra-guest-web-1:3000 |
+| `https://peoplewelike.club` | 200 | infra-guest-web-1:3000 |
+| `https://admin.peoplewelike.club` | 307→/login | infra-admin-web-1:3001 |
+| `https://api.peoplewelike.club` | 200 `{"status":"ok"}` | infra-gateway-1:8000 |
+| `https://grafana.peoplewelike.club` | 302→/login | infra-grafana-1:3000 |
 
-### Ingress architecture (already configured on this VPS)
+### Ingress architecture
 
 ```
-Client → Cloudflare → nginx :443 (host) → proxy_pass → Traefik (Docker container)
-                                                              ↓
-                                              gateway, admin-web, grafana, traefik-dashboard
+Client → Cloudflare → Traefik :443 (Docker, infra_proxy network)
+                                    ↓ Docker label routing
+                      guest-web, admin-web, gateway, grafana
 ```
 
-nginx vhosts route these subdomains to Traefik:
-- `api.peoplewelike.club` → NiteOS gateway (:8000)
-- `admin.peoplewelike.club` → admin-web (:3001)
-- `grafana.peoplewelike.club` → Grafana (:3100)
-- `traefik.peoplewelike.club` → Traefik dashboard
+Traefik handles TLS via Cloudflare DNS-01. Certs in `traefik-acme` Docker volume.
+**Note:** nginx was stopped at M5.6 cutover (2026-03-17). Traefik owns :80/:443 directly.
+
+### VPS-local patches (not in GitHub main)
+
+These fixes were applied to make M6 deploy work with Docker Compose v5 + Docker Engine 29.x:
+
+| File | Fix |
+|------|-----|
+| `Dockerfile` | Alpine runtime (was distroless) — enables CMD-SHELL healthchecks |
+| `infra/docker-compose.cloud.yml` | Traefik v3.6, ports 80:80/443:443, duplicate YAML `<<:` merge keys fixed, all healthchecks use `127.0.0.1` |
+| `infra/traefik/traefik.yml` | Production ports :80/:443, `ping: {}`, `network: infra_proxy` |
+| `web/admin/Dockerfile` | Builder `node:20-slim` (glibc for SWC); `public/` dir created |
+| `web/guest/Dockerfile` | Builder `node:20-slim` (glibc for SWC) |
+| `web/guest/next.config.js` | Replaced `next.config.ts` (Next.js 14 doesn't support .ts config) |
+| `web/admin/src/app/(admin)/` | Removed — duplicate route group conflicting with `/admin/` structure |
 
 Traefik handles TLS via Cloudflare DNS-01 Let's Encrypt. Certs stored in `infra/traefik/acme.json`.
 
@@ -124,12 +126,13 @@ Last verified: 2026-03-17
 | M3 — All 13 Go services | Complete (build clean, critical tests pass) |
 | M3 — Edge service | Complete (SQLite WAL, sync agent, catalog cache) |
 | M4 — Admin console (web/admin/) | Complete (all pages, BFF pattern, iron-session) |
-| M5 — infra/docker-compose.cloud.yml | Complete (16 services, PROFILES_SERVICE_URL wired to orders) |
+| M5 — infra/docker-compose.cloud.yml | Complete |
 | M5 — Traefik config | Complete |
 | M5 — Prometheus + Grafana stubs | Complete |
 | M5 — Scripts (preflight, healthcheck, smoke-test, backup, restore) | Complete |
 | M5 — Deployment docs | Complete |
-| Guest web (web/guest/) | Complete — see below |
+| M5.6 — M5.6 cutover (Traefik on :80/:443, nginx stopped) | **Complete 2026-03-17** |
+| M6 — Guest web + staff surfaces + XP backend + UID lookup + radio persistent | **Complete 2026-03-17** |
 
 ### Guest web capabilities (web/guest/)
 
@@ -147,8 +150,6 @@ Last verified: 2026-03-17
 
 | Item | Blocker / Note |
 |------|----------------|
-| GitHub remote + CI running | Repo not yet pushed to GitHub |
-| NiteOS VPS deployment | Blocked on GitHub push (for git clone) |
 | Android apps | Not started — scaffold only |
 | TWINT payment provider | Waiting for Swiss business account credentials |
 | Full Prometheus instrumentation | stdlib-only metrics now; `prometheus/client_golang` deferred |
@@ -212,8 +213,9 @@ Verified against Go source (`cmd/main.go` defaults) and `infra/docker-compose.cl
 
 | Date | What changed | Who |
 |------|-------------|-----|
-| 2026-03-17 | Stabilization pass: port table corrected (orders=8090, devices=8070, sync=8110, reporting=8120); guest-web status updated to Complete; Known Technical Debt section added; `security` role gap documented | Claude Code |
-| 2026-03-17 | Guest web complete: persistent radio player (layout.tsx), XP/level backend-authoritative, NiteTap UID lookup live, session query endpoint registered, LedgerEvent.occurred_at fix, PROFILES_SERVICE_URL wired to orders service | Claude Code |
+| 2026-03-17 | M6 deployed to production VPS: guest-web live at os.peoplewelike.club, admin-web with catalog/venues/items/users, XP backend, radio player, UID lookup, sessions. Fixed Docker Compose v5 YAML issues, Alpine healthchecks (127.0.0.1), SWC builds, distroless→alpine runtime, next.config.ts→js, duplicate route group removed | Claude Code |
+| 2026-03-17 | Stabilization pass: port table corrected; guest-web Complete; Known Technical Debt section added | Claude Code |
+| 2026-03-17 | Guest web complete: persistent radio player, XP/level backend-authoritative, NiteTap UID lookup live, session query endpoint, LedgerEvent.occurred_at fix, PROFILES_SERVICE_URL wired to orders | Claude Code |
 | 2026-03-16 | Repo normalization: VPS label drift fixed, niteos.io → peoplewelike.club, DOMAIN_MODEL venue_id added, SERVICE_MAP updated to reflect actual topology, DEPLOY_NITEOS_VPS.md created, INFRA_STATE.md created | Claude Code |
 | 2026-03-15 | M4 admin console complete; M5 infra artifacts complete (docker-compose.cloud.yml, scripts, Grafana stubs, traefik config) | Claude Code |
 | 2026-03-15 | M3 all 13 services + edge complete; M0 hardening pass | Claude Code |

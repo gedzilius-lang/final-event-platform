@@ -1,12 +1,10 @@
-# Traefik v3 static configuration — VPS A (NiteOS Core)
+# Traefik v3 static configuration — NiteOS VPS (31.97.126.86)
 # Mounted at /etc/traefik/traefik.yml inside the Traefik container.
 #
-# TLS: Cloudflare DNS-01 challenge (required because domain is proxied via Cloudflare).
-#      Set CF_DNS_API_TOKEN in infra/cloud.env (Cloudflare API token with Zone:DNS:Edit).
+# TLS: Cloudflare DNS-01 challenge (domain is proxied via Cloudflare).
+#      Set CF_DNS_API_TOKEN and ACME_EMAIL in infra/cloud.env.
 #
-# Initial VPS A staging deployment (M5.2):
-#   Change entrypoint ports to 8080/8443 to co-exist with service-1 nginx.
-#   Restore to 80/443 at M5.6 (Traefik takeover).
+# M5.6 CUTOVER COMPLETE: Traefik is on :80/:443. nginx stopped 2026-03-17.
 
 global:
   checkNewVersion: false
@@ -15,6 +13,8 @@ global:
 api:
   dashboard: true
   insecure: false
+
+ping: {}
 
 log:
   level: INFO
@@ -31,7 +31,7 @@ accessLog:
 
 entryPoints:
   web:
-    address: ":8080"          # staging: 8080 (nginx holds :80). Change to :80 at cutover.
+    address: ":80"
     http:
       redirections:
         entryPoint:
@@ -40,7 +40,7 @@ entryPoints:
           permanent: true
 
   websecure:
-    address: ":8443"          # staging: 8443 (nginx holds :443). Change to :443 at cutover.
+    address: ":443"
     http:
       tls:
         certResolver: cloudflare
@@ -49,7 +49,7 @@ providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-    network: proxy
+    network: infra_proxy
   file:
     directory: /etc/traefik/dynamic
     watch: true

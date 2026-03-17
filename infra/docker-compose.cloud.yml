@@ -57,12 +57,12 @@ services:
 
   # ── Traefik ────────────────────────────────────────────────────────────────
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     restart: unless-stopped
     networks: [proxy, core]
     ports:
-      - "8080:8080"   # staging: nginx holds :80. Change to 80:80 at cutover.
-      - "8443:8443"   # staging: nginx holds :443. Change to 443:443 at cutover.
+      - "80:80"
+      - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
@@ -138,7 +138,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8010/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8010/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Profiles (:8020) ───────────────────────────────────────────────────────
@@ -151,9 +151,11 @@ services:
     environment:
       PROFILES_LISTEN_ADDR: ":8020"
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
-    <<: *db-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8020/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8020/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Ledger (:8030) ─────────────────────────────────────────────────────────
@@ -166,9 +168,11 @@ services:
     environment:
       LEDGER_LISTEN_ADDR: ":8030"
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
-    <<: *db-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8030/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8030/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Wallet (:8040) ─────────────────────────────────────────────────────────
@@ -185,7 +189,7 @@ services:
       ledger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8040/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8040/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Ticketing (:8050) ──────────────────────────────────────────────────────
@@ -205,7 +209,7 @@ services:
       ledger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8050/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8050/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Payments (:8060) ───────────────────────────────────────────────────────
@@ -227,7 +231,7 @@ services:
       ledger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8060/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8060/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Devices (:8070) ────────────────────────────────────────────────────────
@@ -240,9 +244,11 @@ services:
     environment:
       DEVICES_LISTEN_ADDR: ":8070"
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
-    <<: *db-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8070/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8070/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Catalog (:8080) ────────────────────────────────────────────────────────
@@ -255,9 +261,11 @@ services:
     environment:
       CATALOG_LISTEN_ADDR: ":8080"
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
-    <<: *db-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Orders (:8090) ─────────────────────────────────────────────────────────
@@ -281,7 +289,7 @@ services:
       sessions:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Sessions (:8100) ───────────────────────────────────────────────────────
@@ -304,7 +312,7 @@ services:
       ledger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8100/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8100/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Sync (:8110) ───────────────────────────────────────────────────────────
@@ -321,7 +329,7 @@ services:
       ledger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8110/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8110/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Reporting (:8120) ──────────────────────────────────────────────────────
@@ -334,9 +342,11 @@ services:
     environment:
       REPORTING_LISTEN_ADDR: ":8120"
       DATABASE_URL: postgres://niteos:${POSTGRES_PASSWORD}@postgres:5432/niteos?sslmode=disable
-    <<: *db-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8120/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8120/healthz || exit 1"]
       <<: *http-healthcheck
 
   # ── Gateway (:8000) — internet-facing via Traefik ──────────────────────────
@@ -369,7 +379,7 @@ services:
       auth:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/healthz || exit 1"]
       <<: *http-healthcheck
     labels:
       - "traefik.enable=true"
@@ -395,7 +405,7 @@ services:
       gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5
@@ -432,7 +442,7 @@ services:
       gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5
