@@ -260,8 +260,8 @@ If the internet dies at 11 PM on a Saturday, the venue continues operating. This
 ## Deployment Model
 
 ### Infrastructure
-- **NiteOS VPS** (`31.97.126.86`): Cloud Core — all Go microservices, Traefik, Postgres, Redis
-- **Radio VPS** (`72.60.181.89`): Radio + Market — kept separate per architectural decision
+- **NiteOS VPS** (`31.97.126.86`): Cloud Core — all Go microservices, Traefik (via nginx ingress), Postgres, Redis
+- **Radio VPS** (`72.60.181.89`): Radio + Market + More — kept permanently separate; do not deploy NiteOS services here
 - Each venue gets an **Edge Node** (Master Tablet or NiteBox) with pre-enrolled Android terminals
 
 ### VPS access model

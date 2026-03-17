@@ -12,9 +12,9 @@ service-2 (Market) and service-3 (Radio) are live products. Nothing in this plan
 
 | System | Repo | VPS | Status | Users / Live Traffic |
 |--------|------|-----|--------|----------------------|
-| service-1 (Fastify API + Next.js OS + Next.js Admin) | `repos/service-1` | VPS A (31.97.126.86) | Prototype. Development only. | No production users. No live transactions. |
-| service-2 (People We Like Market) | `repos/service-2` | VPS B (72.60.181.89) | Production v0.4.3 | Live marketplace users. |
-| service-3 (Radio) | `repos/service-3` | VPS B (72.60.181.89) | Working | Live listeners. |
+| service-1 (Fastify API + Next.js OS + Next.js Admin) | `repos/service-1` | NiteOS VPS (31.97.126.86) | Prototype. Not deployed. | No production users. No live transactions. |
+| service-2 (People We Like Market) | `repos/service-2` | Radio VPS (72.60.181.89) | Production v0.4.3 | Live marketplace users. |
+| service-3 (Radio) | `repos/service-3` | Radio VPS (72.60.181.89) | Working | Live listeners. |
 
 ---
 
@@ -497,53 +497,52 @@ This is the "shadow period." Venue admins (if any exist) can be onboarded to the
 
 ## Phase M5: Infrastructure Consolidation
 
-**Goal:** Move VPS A from service-1's Docker Compose to the NiteOS Traefik-based Docker Compose. service-1 goes into standby. DNS is not yet switched.
+> **Note on "VPS A" references in earlier phases (M0–M3):**
+> Phases M0–M3 were written when a co-existence deployment (NiteOS alongside service-1 on the same VPS) was
+> being planned. That plan was superseded. The architecture is now a clean two-machine split:
+> NiteOS VPS (31.97.126.86) is dedicated to NiteOS; Radio VPS (72.60.181.89) runs radio/market.
+> service-1 was never deployed to production. References to "VPS A" and service-1 in M0–M3 describe
+> the design-time assumption, not current reality. M5 onwards reflects the actual deployment path.
+
+## Phase M5: Infrastructure Consolidation
+
+**Goal:** Deploy the full NiteOS stack to the NiteOS VPS (31.97.126.86). service-1 (never deployed to production) is not a concern. DNS is not yet switched.
 
 **Entry criteria:** M3, M4 complete. Full NiteOS stack tested in staging.
 
-**Touches live systems:** VPS A. This is the riskiest migration phase because it involves the live server. service-2 and service-3 on VPS B are not touched.
+**Touches live systems:** NiteOS VPS (31.97.126.86). service-2 and service-3 on Radio VPS (72.60.181.89) are not touched.
 
-### M5.1 — Prepare VPS A
+### M5.1 — Prepare NiteOS VPS (31.97.126.86)
 
-VPS A currently runs service-1's stack. Before touching it:
+The NiteOS VPS is a clean dedicated machine. service-1 was never deployed to it. Pre-deployment checklist:
 
-1. Take a full VPS snapshot (via VPS provider dashboard)
-2. Export service-1's Postgres database: `pg_dump niteos_service1 > service1_backup_$(date +%Y%m%d).sql`
-3. Store backup in two places: local and cloud object storage
-4. Document service-1's current nginx config and port assignments
+1. Confirm Docker version ≥ 23 (`docker --version`)
+2. Confirm disk free ≥ 15 GB (`df -h /`)
+3. Confirm ports 80/443 routing: nginx on host routes to Traefik in Docker (already configured per prior hardening work)
+4. Run `docs/VPS_NITEOS_AUDIT_CHECKLIST.md` (formerly VPS_A_AUDIT_CHECKLIST.md) to capture pre-deploy state
+5. No service-1 backup needed — service-1 was never on this machine
 
-service-1's current ports (to avoid conflicts during co-existence):
-```
-nginx: 80, 443
-postgres: 5432 (internal)
-api: 3001 (internal)
-os: 3000 (internal)
-admin: 3002 (internal)
-```
+### M5.2 — Deploy NiteOS on NiteOS VPS
 
-### M5.2 — Deploy NiteOS on VPS A (non-conflicting ports)
+The NiteOS VPS has nginx routing :443 → Traefik. Traefik runs in Docker.
+The infra artifacts are already in the repo (`infra/docker-compose.cloud.yml`).
 
-Deploy the NiteOS stack alongside service-1, using different ports:
-
-```yaml
-# infra/docker-compose.cloud.yml (initial VPS A deployment — staging mode)
-# Traefik listens on ports 8080 (HTTP) and 8443 (HTTPS) to avoid conflicting with service-1's nginx
-```
-
-Confirm the NiteOS stack comes up cleanly on VPS A. Run smoke tests against the staging ports.
+Follow `docs/DEPLOY_NITEOS_VPS.md` (formerly DEPLOY_VPS_A.md) from §3 onwards:
+- Configure `infra/cloud.env` (copy from `infra/cloud.env.example`, fill all values)
+- Generate JWT keys
+- Run migrations
+- Start full stack
 
 ### M5.3 — Traefik configuration
 
-Configure Traefik with Cloudflare DNS-01 TLS:
-- `traefik.yml` — entrypoints, Cloudflare resolver, dashboard
-- `dynamic/routes.yml` — service routing rules
+Traefik config is already in the repo:
+- `infra/traefik/traefik.yml` — entrypoints, Cloudflare DNS-01 resolver, dashboard
+- `infra/traefik/dynamic/routes.yml` — service routing rules, security headers, rate limits
 
-All NiteOS routes go through a staging subdomain for now: `staging.peoplewelike.club` (separate DNS entry, not conflicting with service-1).
-
-Verify:
-- TLS certificates issued via Cloudflare DNS-01 for `staging.peoplewelike.club`
+Verify after deploy:
+- TLS certificates issued via Cloudflare DNS-01 for `api.peoplewelike.club`, `admin.peoplewelike.club`
 - Gateway receives requests and routes to correct services
-- Auth flow works through Traefik on staging domain
+- Auth flow works through Traefik
 
 ### M5.4 — Grafana + observability
 
@@ -555,37 +554,34 @@ Deploy Grafana and Prometheus on VPS A. Import dashboards from `infra/grafana/da
 ### M5.5 — Cutover preparation
 
 Before switching DNS:
-- Set service-1's nginx to return a maintenance page (do not kill it yet — just prepare the page)
-- Ensure NiteOS stack on VPS A is stable under 24 hours of uptime on staging subdomain
+- Ensure NiteOS stack on NiteOS VPS is stable under 24 hours of uptime
 - Confirm backup automation runs successfully (`scripts/backup.sh` produces valid backup)
-- Confirm at least one full end-to-end test on the staging subdomain: register → top up → order → sync
+- Confirm at least one full end-to-end test: register → top up → order → sync
 
-### M5.6 — VPS A Traefik takeover
+No service-1 maintenance page is needed — service-1 was never in production.
 
-Switch VPS A's port 80 and 443 from service-1's nginx to Traefik:
+### M5.6 — DNS verification
 
-1. Stop service-1's nginx: `docker compose -f /path/to/service-1/docker-compose.yml stop nginx`
-2. Reconfigure Traefik to listen on 80 and 443
-3. Update Traefik dynamic config to route production domains
-4. service-1 API, OS, and Admin containers remain running — they just have no port 80/443 access
+The NiteOS VPS nginx+Traefik ingress is already configured for:
+- `api.peoplewelike.club`
+- `admin.peoplewelike.club`
+- `grafana.peoplewelike.club`
+- `traefik.peoplewelike.club`
 
-DNS is still pointing to service-1 routes at this point — no public traffic sees the change.
+Confirm Cloudflare DNS A records point to 31.97.126.86 for each subdomain. Traefik will issue TLS certs via Cloudflare DNS-01 on first request.
 
 **Exit criteria:**
-- [ ] VPS A snapshot taken
-- [ ] service-1 database backed up
-- [ ] NiteOS stack running on VPS A (staging ports)
-- [ ] Traefik serving `staging.peoplewelike.club` with valid TLS
-- [ ] All smoke tests pass on staging
-- [ ] Grafana dashboards populated
-- [ ] Backup automation verified
+- [ ] NiteOS stack running on NiteOS VPS (31.97.126.86), all 13 services healthy
+- [ ] Traefik serving `api.peoplewelike.club` with valid TLS
+- [ ] All smoke tests pass (`scripts/smoke-test-pilot.sh`)
+- [ ] Grafana dashboards accessible
+- [ ] Backup automation verified (`niteos-backup.timer` active)
 
 **Rollback:**
-1. Stop Traefik
-2. Start service-1 nginx
-3. service-1 is immediately restored
+1. Stop NiteOS Docker stack (`make cloud-down`)
+2. No service-1 to restore — NiteOS VPS is clean; simply re-deploy from repo
 
-VPS snapshot is the ultimate fallback: restore VPS to pre-M5 state if something is badly broken.
+VPS provider snapshot is the ultimate fallback before first data is written.
 
 ---
 
@@ -611,9 +607,9 @@ Before DNS switch, provision the first venue on NiteOS in full:
 ### M6.2 — DNS switch
 
 ```
-os.peoplewelike.club    → VPS A (Traefik → NiteOS guest-web)
-admin.peoplewelike.club → VPS A (Traefik → NiteOS admin-web)
-api.peoplewelike.club   → VPS A (Traefik → NiteOS gateway)
+os.peoplewelike.club    → NiteOS VPS 31.97.126.86 (nginx → Traefik → guest-web)
+admin.peoplewelike.club → NiteOS VPS 31.97.126.86 (nginx → Traefik → admin-web)
+api.peoplewelike.club   → NiteOS VPS 31.97.126.86 (nginx → Traefik → gateway)
 ```
 
 Change in Cloudflare dashboard. TTL should already be set to 60 seconds in advance.

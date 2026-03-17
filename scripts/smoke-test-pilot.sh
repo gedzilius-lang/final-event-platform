@@ -7,14 +7,14 @@
 # Requirements: curl, jq
 #
 # Usage:
-#   API_BASE=https://api.niteos.io \
-#   NITECORE_EMAIL=nitecore@niteos.io \
+#   API_BASE=https://api.peoplewelike.club \
+#   NITECORE_EMAIL=nitecore@peoplewelike.club \
 #   NITECORE_PASSWORD=<password> \
 #   bash scripts/smoke-test-pilot.sh
 set -euo pipefail
 
-API_BASE="${API_BASE:-https://api.niteos.io}"
-NITECORE_EMAIL="${NITECORE_EMAIL:-nitecore@niteos.io}"
+API_BASE="${API_BASE:-https://api.peoplewelike.club}"
+NITECORE_EMAIL="${NITECORE_EMAIL:-nitecore@peoplewelike.club}"
 NITECORE_PASSWORD="${NITECORE_PASSWORD:-}"
 FAIL=0
 
@@ -97,7 +97,7 @@ fi
 
 # ── 6. Register test guest user ────────────────────────────────────────────────
 step "6. Register test guest user"
-GUEST_EMAIL="smoke-guest-${TS}@test.niteos.io"
+GUEST_EMAIL="smoke-guest-${TS}@test.peoplewelike.club"
 GUEST_RESP=$(api POST /auth/register "" \
   "{\"email\":\"$GUEST_EMAIL\",\"password\":\"TestPass123!\",\"display_name\":\"Smoke Guest $TS\"}")
 GUEST_ID=$(echo "$GUEST_RESP" | jq -r '.user_id // empty')

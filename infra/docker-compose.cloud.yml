@@ -1,4 +1,4 @@
-# NiteOS Cloud Production Stack — VPS A
+# NiteOS Cloud Production Stack — NiteOS VPS (31.97.126.86)
 # Run from repo root: docker compose -f infra/docker-compose.cloud.yml up -d
 # Requires: infra/cloud.env (copy from infra/cloud.env.example and fill in values)
 # Requires: infra/secrets/ directory with key files (see infra/cloud.env.example)
@@ -411,6 +411,42 @@ services:
       - "traefik.http.routers.admin.tls.certresolver=cloudflare"
       - "traefik.http.routers.admin.middlewares=secure-headers@file,admin-ratelimit@file"
       - "traefik.http.services.admin.loadbalancer.server.port=3001"
+
+  # ── Guest Web — internet-facing via Traefik ───────────────────────────────
+  guest-web:
+    build:
+      context: ../web/guest
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks: [core, proxy]
+    environment:
+      SESSION_SECRET: ${GUEST_SESSION_SECRET}
+      GATEWAY_URL: http://gateway:8000
+      AUTH_SERVICE_URL: http://auth:8010
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_SITE_URL: https://os.${DOMAIN}${TRAEFIK_PORT_SUFFIX}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      # os.peoplewelike.club — primary NiteOS guest entry point
+      - "traefik.http.routers.guest.rule=Host(`os.${DOMAIN}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)"
+      - "traefik.http.routers.guest.entrypoints=websecure"
+      - "traefik.http.routers.guest.tls.certresolver=cloudflare"
+      - "traefik.http.routers.guest.middlewares=secure-headers@file,guest-ratelimit@file"
+      - "traefik.http.services.guest.loadbalancer.server.port=3000"
 
   # ── Prometheus (:9090) ──────────────────────────────────────────────────────
   prometheus:

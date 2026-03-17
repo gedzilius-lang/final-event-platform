@@ -1,6 +1,16 @@
 # VPS A Audit Checklist
 
-Run these commands on VPS A **before** making any deployment decision.
+> **Machine clarification:**
+> This checklist was run on the **Radio VPS (72.60.181.89)** — the server running radio, market, and more.
+> It is NOT an audit of the NiteOS VPS (31.97.126.86).
+>
+> The completed audit results are appended at the bottom of this file (§14 filled-in table).
+>
+> For auditing the NiteOS VPS before deployment, run the same commands against 31.97.126.86.
+
+---
+
+Run these commands on the target VPS **before** making any deployment decision.
 Copy output into a text file — you will need it to fill in the decision framework.
 
 ---
@@ -251,19 +261,18 @@ docker system df -v 2>/dev/null
 
 ---
 
-## 13. service-1 (existing service on VPS A)
+## 13. Existing services (check for unexpected processes on 80/443)
 
 ```bash
-# Identify what service-1 is
-ls /opt/service-1/ 2>/dev/null || echo "no /opt/service-1"
-
-# Any nginx vhosts pointing to service-1
-grep -r "service-1\|service1" /etc/nginx/ 2>/dev/null || echo "no nginx config referencing service-1"
-
-# Process list — find anything running on 80/443
+# Check for unexpected services on port 80/443
 ss -tlnp | grep -E ':80|:443'
 lsof -i :80 -i :443 2>/dev/null | grep LISTEN
+
+# Check for service-1 (should not be present on either VPS)
+ls /opt/service-1/ 2>/dev/null || echo "no /opt/service-1"
 ```
+
+Note: service-1 was never deployed to production. It should not be present on either the NiteOS VPS or Radio VPS. The Radio VPS audit (results below) confirmed: no service-1 found.
 
 ---
 

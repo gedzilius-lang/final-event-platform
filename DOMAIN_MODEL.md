@@ -49,6 +49,9 @@ password_hash   text NOT NULL
 display_name    text
 role            text NOT NULL DEFAULT 'guest'
                   -- guest | venue_admin | bartender | door_staff | nitecore
+venue_id        uuid                   -- NULL for global roles (guest, nitecore)
+                                       -- set for venue-scoped roles (venue_admin, bartender, door_staff)
+                                       -- written by PATCH /users/{user_id}/venue (nitecore only)
 global_xp       integer NOT NULL DEFAULT 0
 global_level    integer NOT NULL DEFAULT 1
 created_at      timestamptz NOT NULL DEFAULT now()
@@ -57,8 +60,9 @@ updated_at      timestamptz NOT NULL DEFAULT now()
 
 Notes:
 - No wallet balance field. Ever.
-- `role` here is the platform role. Operational roles (bartender, door_staff) are set per-device in the devices service, not on the user record.
-- A user can be both a guest on the platform and a venue_admin for a specific venue. The venue_id association lives in VenueProfile, not here.
+- `role` is the platform role. `venue_id` scopes the role to a specific venue.
+- `venue_id` is NULL for guests and nitecore superadmins. It is set by nitecore when assigning a staff role to a user.
+- The login JWT includes a `venue_id` claim so venue-scoped services can enforce venue isolation without a separate lookup.
 - XP and level are global (network-wide). Venue-local XP lives in VenueProfile.
 
 ---

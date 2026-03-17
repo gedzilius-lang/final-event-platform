@@ -13,11 +13,11 @@ The complete system architecture for NiteOS. Every service, every communication 
                                │  HTTPS / DNS-01 TLS
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         VPS A — 31.97.126.86 (NiteOS Core)                      │
+│                    NiteOS VPS — 31.97.126.86 (Cloud Core)                        │
 │                                                                                  │
 │   ┌─────────────────────────────────────────────────────────────────────────┐   │
-│   │                          Traefik (Reverse Proxy)                        │   │
-│   │          api. / os. / admin.  .peoplewelike.club                        │   │
+│   │                  nginx (ingress) → Traefik (Reverse Proxy)              │   │
+│   │   api. / os. / admin. / grafana. / traefik.  .peoplewelike.club        │   │
 │   └──────────────────────┬──────────────────────────────────────────────────┘   │
 │                          │ internal routing                                      │
 │   ┌──────────────────────▼──────────────────────────────────────────────────┐   │
@@ -44,10 +44,12 @@ The complete system architecture for NiteOS. Every service, every communication 
 └─────────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                     VPS B — 72.60.181.89 (Radio + Market)                       │
+│                     Radio VPS — 72.60.181.89 (Radio + Market)                   │
 │                                                                                  │
-│   radio.peoplewelike.club  ──►  radio stack (nginx-rtmp · switch · autodj)     │
+│   radio.peoplewelike.club  ──►  radio stack (nginx-rtmp · autodj · HLS relay)  │
 │   market.peoplewelike.club ──►  Next.js market app + Postgres                  │
+│   more.peoplewelike.club   ──►  pwl-more app + Postgres                        │
+│   stream.peoplewelike.club ──►  HLS stream relay                               │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -418,29 +420,32 @@ No other service may write ledger events. Gateway cannot write ledger events. Ad
 
 ## Deployment Layout
 
-### VPS A (NiteOS Core)
+### NiteOS VPS (31.97.126.86)
 ```
 /opt/niteos/
-├── docker-compose.yml          ← single source of truth
-├── .env                        ← secrets (not in git)
-├── traefik/
-│   └── traefik.yml
-├── postgres/
-│   └── init/                   ← per-service schema init scripts
-├── redis/
-│   └── redis.conf
-└── grafana/
-    └── dashboards/
+├── infra/
+│   ├── docker-compose.cloud.yml   ← single source of truth
+│   ├── cloud.env                  ← secrets (not in git, gitignored)
+│   ├── traefik/
+│   │   ├── traefik.yml
+│   │   └── dynamic/routes.yml
+│   ├── prometheus.yml
+│   ├── grafana/
+│   └── secrets/                   ← JWT keys (gitignored)
+└── scripts/                       ← migrate, backup, healthcheck, smoke-test
 ```
 
 All services run as Docker containers. Traefik auto-discovers via container labels.
 Postgres: single instance, per-service schemas (schema-per-service isolation).
 Redis: single instance, key namespace per service (`auth:*`, `wallet:*`, etc.).
+nginx (host): routes :80/:443 → Traefik for NiteOS subdomains (api/admin/grafana/traefik.peoplewelike.club).
+Traefik: runs in Docker, bound to host ports. Uses Cloudflare DNS-01 for TLS.
 
-### VPS B (Radio + Market)
+### Radio VPS (72.60.181.89)
 ```
-/opt/radijas-v2/    ← radio (existing, unchanged)
-/opt/pwl-market/    ← market (existing, may relocate to VPS A later)
+/opt/radijas-v2/    ← radio (stable, do not touch)
+/opt/pwl-market/    ← market (stable, do not touch)
+/opt/pwl-more/      ← more (stable, do not touch)
 ```
 
 ### Venue (per-venue)
@@ -457,7 +462,7 @@ Redis: single instance, key namespace per service (`auth:*`, `wallet:*`, etc.).
 ## Observability
 
 ### Phase 1 (pilot-required)
-- Grafana dashboard on VPS A
+- Grafana dashboard on NiteOS VPS (31.97.126.86)
 - Alerts for: service down, payment callback failure, sync lag > 5 min, device offline > 10 min, edge unreachable
 - Structured JSON logs from all Go services (written to stdout, captured by Docker)
 - `/health` endpoint on every service (returns 200 + version + uptime)
@@ -473,6 +478,8 @@ Redis: single instance, key namespace per service (`auth:*`, `wallet:*`, etc.).
 ---
 
 ## Network Ports (Reference)
+
+Note: the ASCII diagram above uses abbreviated schematic port suffixes (:81, :82 ...) for readability only. The authoritative ports are in the table below.
 
 | Service | Internal Port | Notes |
 |---------|--------------|-------|

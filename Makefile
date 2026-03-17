@@ -1,4 +1,5 @@
 .PHONY: build test lint dev-up dev-down migrate seed admin-dev admin-build \
+        guest-dev guest-build \
         cloud-build cloud-up cloud-down cloud-logs cloud-ps cloud-migrate help
 
 # Default target
@@ -59,7 +60,13 @@ admin-dev:
 admin-build:
 	cd web/admin && npm install && npm run build
 
-# ── Cloud deployment targets (VPS A) ──────────────────────────────────────────
+guest-dev:
+	cd web/guest && npm install && npm run dev
+
+guest-build:
+	cd web/guest && npm install && npm run build
+
+# ── Cloud deployment targets (NiteOS VPS) ─────────────────────────────────────
 CLOUD_COMPOSE = docker compose -f infra/docker-compose.cloud.yml --env-file infra/cloud.env
 
 cloud-build:

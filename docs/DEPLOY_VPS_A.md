@@ -1,7 +1,10 @@
-# NiteOS VPS A Deployment Runbook
+# NiteOS VPS Deployment Runbook
 
-**Target:** Ubuntu 24.04 LTS, single VPS, Docker Compose stack
-**Domain:** niteos.io (Cloudflare-proxied, DNS-01 TLS via Traefik)
+> **This file is also saved as `docs/DEPLOY_NITEOS_VPS.md`.** Both names are kept during transition. The canonical name going forward is `DEPLOY_NITEOS_VPS.md`.
+
+**Target:** NiteOS VPS — 31.97.126.86 (Ubuntu 22.04 LTS, Docker 29.2.1, SSH hardened)
+**Domain:** peoplewelike.club subdomains — Cloudflare DNS-01 TLS via Traefik
+**Ingress:** nginx (host) routes :443 → Traefik in Docker
 **Services:** 13 Go microservices + Postgres + Redis + Traefik + Admin Web + Prometheus + Grafana
 
 ---
@@ -74,8 +77,8 @@ nano infra/cloud.env
 | `TRAEFIK_DASHBOARD_USERS` | `htpasswd -nB admin` (install: `apt-get install apache2-utils`) |
 | `STRIPE_API_KEY` | Stripe live key (`sk_live_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook secret (`whsec_...`) |
-| `DOMAIN` | `niteos.io` |
-| `ACME_EMAIL` | `admin@niteos.io` |
+| `DOMAIN` | `peoplewelike.club` |
+| `ACME_EMAIL` | `admin@peoplewelike.club` |
 
 Run the preflight check to confirm all values are set:
 ```bash
@@ -158,10 +161,10 @@ Manual checks:
 
 | URL | Expected |
 |-----|---------|
-| `https://api.niteos.io/healthz` | `{"status":"ok"}` |
-| `https://admin.niteos.io` | Login page |
-| `https://grafana.niteos.io` | Grafana login |
-| `https://traefik.niteos.io` | Traefik dashboard (HTTP Basic Auth) |
+| `https://api.peoplewelike.club/healthz` | `{"status":"ok"}` |
+| `https://admin.peoplewelike.club` | Login page |
+| `https://grafana.peoplewelike.club` | Grafana login |
+| `https://traefik.peoplewelike.club` | Traefik dashboard (HTTP Basic Auth) |
 
 ---
 
@@ -171,19 +174,19 @@ After the stack is healthy, create the pilot venue and admin user:
 
 ```bash
 # 1. Register the venue_admin user (via admin console or curl):
-curl -s -X POST https://api.niteos.io/auth/register \
+curl -s -X POST https://api.peoplewelike.club/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@venue-name.com","password":"STRONG_PASSWORD","display_name":"Venue Admin"}'
 # Returns: {"user_id":"...","access_token":"..."}
 
 # 2. Store the nitecore token (login as nitecore):
-NITECORE_TOKEN=$(curl -s -X POST https://api.niteos.io/auth/login \
+NITECORE_TOKEN=$(curl -s -X POST https://api.peoplewelike.club/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"nitecore@niteos.io","password":"NITECORE_PASSWORD"}' \
+  -d '{"email":"nitecore@peoplewelike.club","password":"NITECORE_PASSWORD"}' \
   | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
 # 3. Create venue in catalog:
-VENUE_ID=$(curl -s -X POST https://api.niteos.io/catalog/venues \
+VENUE_ID=$(curl -s -X POST https://api.peoplewelike.club/catalog/venues \
   -H "Authorization: Bearer $NITECORE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"Venue Name","slug":"venue-name","city":"Zurich","capacity":200,"staff_pin":"1234","timezone":"Europe/Zurich"}' \
@@ -192,12 +195,12 @@ echo "Venue ID: $VENUE_ID"
 
 # 4. Assign venue_admin role + venue_id to the user:
 USER_ID="<user_id from step 1>"
-curl -s -X PATCH https://api.niteos.io/profiles/users/$USER_ID/venue \
+curl -s -X PATCH https://api.peoplewelike.club/profiles/users/$USER_ID/venue \
   -H "Authorization: Bearer $NITECORE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "{\"venue_id\":\"$VENUE_ID\",\"role\":\"venue_admin\"}"
 
-# 5. Login to admin console at https://admin.niteos.io with venue_admin credentials
+# 5. Login to admin console at https://admin.peoplewelike.club with venue_admin credentials
 ```
 
 ---
@@ -263,18 +266,22 @@ bash scripts/healthcheck-cloud.sh
 | Run migrations | `make cloud-migrate` |
 | View service status | `make cloud-ps` |
 | Manual backup | `systemctl start niteos-backup.service` |
-| Check Prometheus targets | `https://grafana.niteos.io` → Explore → Prometheus |
+| Check Prometheus targets | `https://grafana.peoplewelike.club` → Explore → Prometheus |
 
 ---
 
-## 14. Staging deployment (M5.2 — co-exist with service-1)
+## 14. Ingress note — nginx → Traefik
 
-If an existing nginx is on port 80/443, deploy NiteOS on non-conflicting ports first:
+The NiteOS VPS uses nginx (host) as the public ingress on :443, which proxy_passes to Traefik in Docker.
+This is already configured. No port-offset staging is required on first deploy.
 
-1. Edit `infra/traefik/traefik.yml` — change entryPoints web to `:8080` and websecure to `:8443`
-2. Point a subdomain (`staging.niteos.io`) at VPS A
-3. Deploy and verify at `https://staging.niteos.io:8443`
-4. At cutover (M5.6): stop service-1 nginx, restore port 80/443 in traefik.yml, restart Traefik
+If for any reason Traefik needs to bind directly to :80/:443 (without nginx in front):
+1. Edit `infra/traefik/traefik.yml` — set entryPoints web to `:80` and websecure to `:443`
+2. Update compose Traefik ports to `"80:80"` and `"443:443"`
+3. Disable or reconfigure the nginx ingress proxy_pass directives for NiteOS subdomains
+4. Restart Traefik
+
+For the standard nginx→Traefik setup, no changes to traefik.yml are needed.
 
 ---
 

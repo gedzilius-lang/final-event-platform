@@ -1,6 +1,33 @@
 # VPS A: Staged Coexistence Deployment
 
-**Situation:** nginx is live on VPS A ports 80/443 serving:
+> **SUPERSEDED — 2026-03-16**
+>
+> This document described a plan to deploy NiteOS alongside the radio/market services on the same VPS.
+> That approach is no longer applicable.
+>
+> **Current architecture:**
+> - NiteOS VPS (31.97.126.86): clean dedicated NiteOS runtime. Radio/market services do NOT run here.
+> - Radio VPS (72.60.181.89): radio, market, more — stable, do not touch.
+>
+> **For NiteOS deployment, use: `docs/DEPLOY_NITEOS_VPS.md`**
+>
+> This file is retained for historical reference only. The port-offset coexistence approach it describes
+> was designed for a scenario (NiteOS co-located with radio/market) that was superseded by the
+> dedicated VPS split.
+
+---
+
+**[HISTORICAL DOCUMENT — content below is from the superseded co-deployment plan]**
+
+**Original situation this doc addressed:** nginx live on ports 80/443 serving radio/market domains.
+NiteOS was to deploy alongside on offset ports until nginx decommissioned.
+
+**Why this no longer applies:** The NiteOS VPS (31.97.126.86) has nginx routing :443 → Traefik
+for NiteOS subdomains. It does NOT serve radio/market domains. No port conflict exists.
+
+---
+
+**Situation (historical):** nginx is live on VPS A ports 80/443 serving:
 - `market.peoplewelike.club`
 - `more.peoplewelike.club`
 - `radio.peoplewelike.club`

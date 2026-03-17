@@ -5,7 +5,7 @@
 #
 # Usage:
 #   bash scripts/healthcheck-cloud.sh                  # local (port-forwarded or dev)
-#   DOMAIN=niteos.io bash scripts/healthcheck-cloud.sh # production via public endpoints
+#   DOMAIN=peoplewelike.club bash scripts/healthcheck-cloud.sh # production via public endpoints
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-}"
@@ -84,6 +84,7 @@ if [[ -n "$DOMAIN" ]]; then
   echo "--- Public endpoints (https://$DOMAIN) ---"
   check_url "gateway /healthz"  "https://api.${DOMAIN}/healthz"
   check_url "admin-web /health" "https://admin.${DOMAIN}/api/health"
+  check_url "guest-web /health" "https://os.${DOMAIN}/api/health"
   check_url "grafana /health"   "https://grafana.${DOMAIN}/api/health"
   echo ""
 fi

@@ -1,3 +1,20 @@
+# Radio VPS Audit Results — 72.60.181.89 (2026-03-16)
+#
+# IMPORTANT: This audit was performed on the RADIO VPS (72.60.181.89),
+# which runs radio, market (pwl-market), more (pwl-more), and stream.
+# This is NOT an audit of the NiteOS VPS (31.97.126.86).
+#
+# Key findings (summarised):
+# - Ubuntu 22.04.5 LTS, Docker 29.2.1
+# - 8 containers running: pwl-market, pwl-more, radio-rtmp, radio-web, radio-autodj + support
+# - nginx on :80/:443, no Traefik, no NiteOS stack
+# - /opt/niteos: absent (correct — NiteOS does not run here)
+# - service-1: absent (correct — never deployed to this machine)
+# - pwl-market-backup.timer: active
+# - 35 GB disk free
+#
+# Raw output follows.
+
 # OS version and kernel
 lsb_release -a
 uname -r

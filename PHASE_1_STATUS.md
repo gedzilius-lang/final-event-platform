@@ -2,13 +2,13 @@
 
 Current status of Phase 1 (M0: Safe Ground) execution.
 
-Last updated: 2026-03-15 (M3 service build complete)
+Last updated: 2026-03-17 (guest web complete)
 
 ---
 
-## Overall Status: M3 COMPLETE (local code)
+## Overall Status: M5 IN PROGRESS — guest web complete, VPS deployment pending
 
-M0 scaffolding + M3 service build are complete. All 13 services + edge implemented, build clean, critical tests pass. Three M0 exit criteria remain pending (Go verified ✓, Docker not installed, no GitHub remote). M4 (admin console) is next.
+M0–M4 complete (all 13 Go services + edge + admin console). M5 infra artifacts complete. Guest web (web/guest/) implemented and wired into docker-compose.cloud.yml. Remaining M5 blocker: NiteOS VPS deployment (requires GitHub push to allow VPS clone).
 
 ---
 

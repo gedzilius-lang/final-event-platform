@@ -6,39 +6,55 @@ Maps every running service, its exposed interfaces, and the relationships (real 
 
 ## Current Live Topology
 
+Last verified: 2026-03-16
+
 ```
 Internet
     |
-    +--- Cloudflare (DNS proxy, partial caching)
+    +--- Cloudflare (DNS proxy)
     |
-    +--- VPS A: 31.97.126.86  (NiteOS / PWL OS)
+    +--- NiteOS VPS: 31.97.126.86  (NiteOS Cloud Core — TARGET, not yet deployed)
     |         |
-    |         +-- nginx (port 80)
-    |               |-- os.peoplewelike.club      --> Next.js OS frontend  (container)
-    |               |-- admin.peoplewelike.club   --> Next.js Admin frontend (container)
-    |               |-- api.peoplewelike.club     --> Fastify API (container :4000)
-    |                                                   |
-    |                                                   +-- PostgreSQL (container, internal)
+    |         +-- nginx (host, port 80/443) — ingress configured, routes to Traefik:
+    |               |-- api.peoplewelike.club     --> Traefik → gateway (not yet live)
+    |               |-- admin.peoplewelike.club   --> Traefik → admin-web (not yet live)
+    |               |-- grafana.peoplewelike.club --> Traefik → Grafana (not yet live)
+    |               |-- traefik.peoplewelike.club --> Traefik dashboard (not yet live)
+    |         |
+    |         +-- /opt/niteos: ABSENT (not yet deployed)
+    |         +-- Docker: installed (v29.2.1), no NiteOS containers running
+    |         +-- SSH: hardened (key-only, fail2ban, UFW)
+    |         +-- Swap: 4 GB
     |
-    +--- VPS B: 72.60.181.89  (Market + Radio)
+    +--- Radio VPS: 72.60.181.89  (Radio + Market — stable, do not touch)
               |
               +-- nginx (host, port 80/443)
-                    |-- market.peoplewelike.club  --> Next.js Market app (container :3101)
-                    |                                   |
+                    |-- market.peoplewelike.club  --> pwl-market-app (container :3101)
                     |                                   +-- PostgreSQL (container, internal)
-                    |
-                    |-- radio.peoplewelike.club   --> nginx:alpine (container :8080)
+                    |-- more.peoplewelike.club    --> pwl-more-app (container :3100)
+                    |                                   +-- PostgreSQL (container, internal)
+                    |-- radio.peoplewelike.club   --> radio-web nginx:alpine (container :8080)
                     |   stream.peoplewelike.club         |-- /hls/current/index.m3u8
-                    |   ingest.peoplewelike.club         |-- /api/status
-                    |                                    |-- /api/nowplaying
-                    |                                    |-- / (Video.js player)
+                    |   ingest.peoplewelike.club         |-- /api/status, /api/nowplaying
                     |
                     |   RTMP :1935 -----------> radio-rtmp container
-                    |                               |-- application live (auth via radio-rtmp-auth :8088)
-                    |                               |-- application autodj (localhost only)
+                    |                               |-- auth via radio-rtmp-auth (:8088)
+                    |                               |-- autodj (localhost)
                     |
                     +-- av.peoplewelike.club      --> Unrelated static site (do not touch)
 ```
+
+**NiteOS VPS state summary (2026-03-16):**
+- Docker 29.2.1 installed and running
+- nginx routes :443 → Traefik for NiteOS subdomains (ingress only; no backend services yet)
+- /opt/niteos does not exist — repo not yet cloned, stack not deployed
+- No Postgres, no Redis, no JWT keys, no cloud.env on this machine
+- 35 GB disk free, 4 GB swap, SSH hardened
+
+**Radio VPS state summary (2026-03-16):**
+- 8 Docker containers running, all healthy
+- pwl-market-backup.timer active (daily backup)
+- service-1 (the old Fastify prototype) is NOT running — it was never deployed here
 
 ---
 
@@ -117,82 +133,90 @@ Internet
 
 | From | To | How | Notes |
 |------|----|-----|-------|
-| service-1 OS frontend | service-3 Radio | iframe embed | `RADIO_IFRAME_SRC` env var |
-| service-1 OS frontend | service-1 API | REST over internal Docker network | Direct container link |
-| service-1 Admin frontend | service-1 API | REST over internal Docker network | Direct container link |
+| service-2 Market | service-3 Radio | none (separate stacks) | No integration |
+| guest-web | service-3 Radio | iframe embed | guest-web built (not yet deployed) |
 
-### What is NOT connected but should be
+service-1 is not deployed anywhere and has no live inter-service connections.
+
+### What is NOT yet connected but will be
 
 | Missing Link | Why It Matters |
 |--------------|----------------|
-| service-1 API → any payment provider | Wallet top-up has no real money path |
-| service-1 API → service-2 Market | Vendor products in OS DB are a duplicate of service-2 |
-| service-3 Radio → service-1 OS | Now playing data not surfaced in OS beyond iframe |
-| Any service → email delivery | Vendor invites, ticket confirmations, wallet receipts all lack email sending |
-| Any service → mobile/Android terminal | No edge/kiosk layer exists yet |
-| Any service → SQLite edge node | No offline-capable edge service exists |
+| NiteOS gateway → any service | NiteOS stack not yet deployed on NiteOS VPS |
+| guest-web → NiteOS gateway | guest-web built; blocked on NiteOS VPS deployment |
+| Android terminals → edge node | Android apps not yet built |
+| Edge node → cloud sync service | Depends on NiteOS VPS deployment |
+| NiteOS payments → TWINT | Waiting for Swiss business account credentials |
+| service-2 Market → NiteOS OAuth | M7 — shared identity, deferred post-pilot |
 
 ---
 
-## Intended Future Topology (from architecture-notes.md)
+## Target Topology (after M5+M6 deployment)
 
 ```
 Internet
     |
     +-- Cloudflare
          |
-         +-- api.peoplewelike.club  (Go API gateway)
-         |       |
-         |       +-- auth service
-         |       +-- profiles service
-         |       +-- ledger service (append-only, Postgres)
-         |       +-- wallet service (projections from ledger)
-         |       +-- ticketing service
-         |       +-- orders service
-         |       +-- catalog service
-         |       +-- devices service
-         |       +-- reporting service
-         |       +-- payments service (TWINT primary, Stripe optional)
-         |       |
-         |       +-- Postgres (cloud)
-         |       +-- Redis (sessions, cache, rate limits)
-         |       +-- NATS (optional async)
-         |       +-- Traefik (reverse proxy)
-         |       +-- Grafana (observability)
+         +-- NiteOS VPS: 31.97.126.86
+         |    |
+         |    +-- nginx (host :80/:443)
+         |         |-- api.peoplewelike.club   → Traefik → gateway :8000
+         |         |-- admin.peoplewelike.club → Traefik → admin-web :3001
+         |         |-- os.peoplewelike.club    → Traefik → guest-web :3000
+         |         |-- grafana.peoplewelike.club → Traefik → Grafana :3100
          |
-         +-- os.peoplewelike.club   (Next.js guest web)
-         +-- admin.peoplewelike.club (Next.js admin console)
+         |    +-- gateway :8000
+         |         +-- auth :8010
+         |         +-- profiles :8020
+         |         +-- ledger :8030       (append-only Postgres, no UPDATE/DELETE)
+         |         +-- wallet :8040       (balance projections from ledger)
+         |         +-- payments :8050     (Stripe + TWINT, webhook receiver)
+         |         +-- ticketing :8060
+         |         +-- orders :8070
+         |         +-- catalog :8080
+         |         +-- devices :8090
+         |         +-- sessions :8100
+         |         +-- reporting :8110
+         |         +-- sync :8120         (receives edge sync frames)
          |
-         +-- radio.peoplewelike.club (keep separate)
+         |    +-- Postgres :5432          (single instance, schema-per-service)
+         |    +-- Redis :6379             (sessions, rate limits, wallet cache)
+         |    +-- Traefik                 (DNS-01 TLS via Cloudflare)
+         |    +-- Prometheus + Grafana :3100
+         |
+         +-- Radio VPS: 72.60.181.89     (stable — do not modify)
+              +-- radio.peoplewelike.club  (keep separate, embedded in guest-web via iframe)
+              +-- market.peoplewelike.club (M7: additive shared identity only)
 
-    Venue LAN
+    Venue LAN (per venue)
          |
-         +-- Edge Node (Master Tablet or NiteBox)
-               |-- SQLite hot ledger
-               |-- local order capture
-               |-- local sync agent
-               |-- device coordination
+         +-- Edge Node (Master Tablet, Go binary + SQLite)
+               |-- LAN API :9000
+               |-- local ledger, catalog cache, sync queue
                |
-               +-- Android terminals (via LAN Wi-Fi)
+               +-- Android terminals (via isolated Ubiquiti VLAN)
                      |-- NiteKiosk (bartender, kiosk mode)
                      |-- NiteTerminal (door/security)
-                     |-- Master Tablet (admin)
+                     |-- Master Tablet (admin + edge host)
 ```
 
 ---
 
 ## Key Observations
 
-1. **Two separate VPS** are currently in use. The architecture notes require consolidation onto one primary VPS (`31.97.126.86`) for NiteOS core, with radio remaining on `72.60.181.89`.
+1. **Two VPS machines** are in use. Role assignment is fixed:
+   - NiteOS VPS (31.97.126.86): clean dedicated NiteOS runtime. Not yet deployed.
+   - Radio VPS (72.60.181.89): stable runtime for radio, market, more. Do not touch.
 
-2. **service-2 (Market) and service-3 (Radio) share a VPS** (`72.60.181.89`) but have no integration with each other or with service-1.
+2. **service-2 (Market) and service-3 (Radio)** are live on Radio VPS and have no integration with NiteOS. M7 adds additive-only shared identity to Market. Radio integration is limited to guest-web iframe embed.
 
-3. **No shared auth** exists between any of the three services. A user logged into Market cannot access the OS or vice versa.
+3. **No shared auth** exists yet. Planned: NiteOS auth becomes the OAuth2 provider for Market (M7, post-pilot).
 
-4. **No edge layer exists** anywhere. The entire offline-capable venue operating system described in architecture-notes.md is not yet built.
+4. **NiteOS Cloud Core is built but not deployed.** All 13 Go services + edge + admin-web + guest-web exist in this repo and build clean. They are not yet running on any VPS.
 
-5. **service-1 is the closest thing to NiteOS core** but lacks: event-sourced ledger, payment integration, device enrollment, proper sync, and Go rewrite.
+5. **service-1 was a prototype** (Fastify API + Next.js). It was never deployed to production. It is reference material only and will not be migrated.
 
-6. **service-2 (Market) is architecturally separate** from the venue ops product. It is a public e-commerce tool, not a venue operating system.
+6. **The edge layer is implemented** in `edge/` (Go binary + SQLite). Not yet deployed to any venue hardware.
 
-7. **service-3 (Radio) is fully independent** and should remain so per the architecture direction.
+7. **service-3 (Radio) is fully independent** and must remain so. It runs on the Radio VPS and will not be touched by any NiteOS deployment activity.

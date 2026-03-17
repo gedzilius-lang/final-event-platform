@@ -27,3 +27,9 @@ http:
         average: 60
         burst: 120
         period: 1s
+
+    guest-ratelimit:
+      rateLimit:
+        average: 300
+        burst: 600
+        period: 1s

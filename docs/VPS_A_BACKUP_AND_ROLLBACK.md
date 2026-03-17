@@ -1,7 +1,12 @@
-# VPS A: Pre-Deploy Backup and Rollback
+# NiteOS VPS (31.97.126.86): Pre-Deploy Backup and Rollback
+
+> **Machine:** NiteOS VPS — 31.97.126.86. Not applicable to the Radio VPS (72.60.181.89).
+>
+> **Current state (2026-03-16):** No NiteOS stack deployed yet. §1 (pre-deploy backup) does not
+> apply until after the first successful deployment. §2 (service-1 backup) is permanently irrelevant —
+> service-1 was never on this machine. §5 (rollback to service-1) is permanently irrelevant.
 
 Run §1 before any PATH B in-place overwrite.
-Run §1 before any cutover from service-1.
 Run §3 or §4 to recover from a failed deploy.
 
 ---
@@ -79,7 +84,10 @@ git log --oneline -5
 
 ---
 
-## §2 — service-1 Backup (before cutover only)
+## §2 — service-1 Backup — IRRELEVANT
+
+> service-1 was never deployed to the NiteOS VPS (31.97.126.86). This section does not apply
+> and can be ignored entirely.
 
 If service-1 is a running application with its own data, back it up before port cutover:
 
@@ -186,7 +194,12 @@ bash scripts/healthcheck-cloud.sh
 
 ---
 
-## §5 — Rollback to Pre-Cutover State (service-1 re-activation)
+## §5 — Rollback to Pre-Cutover State — IRRELEVANT
+
+> service-1 was never deployed. There is no pre-cutover service-1 state to restore.
+> If the NiteOS stack fails and cannot be recovered, take the VPS provider snapshot rollback path.
+
+### Original service-1 rollback instructions (kept for pattern reference only)
 
 Use when: NiteOS is not healthy after cutover and you need to restore service-1 immediately.
 

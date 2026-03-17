@@ -25,7 +25,7 @@ niteos/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                  # build + test all services on PR
-│       ├── deploy-cloud.yml        # deploy to VPS A on merge to main
+│       ├── deploy-cloud.yml        # deploy to NiteOS VPS (31.97.126.86) on merge to main
 │       └── deploy-edge.yml         # build edge binary for distribution
 │
 ├── services/                       # Go microservices
@@ -55,7 +55,7 @@ niteos/
 │   └── mastertablet/
 │
 ├── infra/                          # Deployment configuration
-│   ├── docker-compose.cloud.yml    # VPS A production stack
+│   ├── docker-compose.cloud.yml    # NiteOS VPS production stack (31.97.126.86)
 │   ├── docker-compose.dev.yml      # Local development stack
 │   ├── traefik/
 │   │   ├── traefik.yml
@@ -158,31 +158,39 @@ This package is intentionally minimal. Services depend on it — it must not dep
 ## Frontend Structure
 
 ```
-web/guest/                          # Guest web app (os.peoplewelike.club)
+web/guest/                          # Guest web app (os/www/apex.peoplewelike.club)
 ├── app/                            # Next.js 14 App Router
+│   ├── layout.tsx                  # Root layout — dark theme, mobile-first
+│   ├── page.tsx                    # Home: landing (logged out) / event feed + wallet (logged in)
+│   ├── globals.css
 │   ├── (auth)/
-│   │   ├── login/
-│   │   └── register/
+│   │   ├── login/page.tsx
+│   │   └── register/page.tsx
 │   ├── wallet/
-│   ├── tickets/
-│   ├── events/
-│   ├── market/
-│   └── api/                        # BFF routes (proxy to backend services + set httpOnly cookies)
+│   │   ├── page.tsx                # Balance display + top-up
+│   │   └── TopUpButton.tsx         # Client component — initiates Stripe checkout
+│   ├── tickets/page.tsx            # My tickets (active + past)
+│   ├── events/page.tsx             # Venue/event discovery feed
+│   ├── session/page.tsx            # Active venue session (post NiteTap check-in)
+│   ├── venues/[slug]/page.tsx      # Venue detail + catalog preview
+│   └── api/                        # BFF routes (httpOnly cookies — no direct backend calls from browser)
 │       ├── auth/
 │       │   ├── login/route.ts
 │       │   ├── register/route.ts
-│       │   ├── refresh/route.ts
 │       │   └── logout/route.ts
-│       ├── wallet/route.ts
-│       ├── tickets/route.ts
-│       └── topup/route.ts
+│       ├── wallet/topup/route.ts   # Initiates Stripe checkout → returns checkout_url
+│       └── health/route.ts
 ├── components/
+│   ├── NavBar.tsx                  # Sticky nav with wallet badge, mobile bottom nav
+│   ├── LogoutButton.tsx            # Client component
+│   └── WalletBadge.tsx             # Wallet summary card
 ├── lib/
-│   ├── api.ts                      # Internal: call BFF routes
-│   └── auth.ts                     # Token expiry detection, trigger refresh
-├── public/
+│   ├── api.ts                      # Server-side BFF helpers (backendFetch, typed API calls)
+│   └── session.ts                  # iron-session (24h, httpOnly, GuestSession type)
+├── .env.local.example
 ├── next.config.ts
 ├── package.json
+├── tailwind.config.ts
 └── Dockerfile
 
 web/admin/                          # Admin console (admin.peoplewelike.club)
@@ -362,7 +370,7 @@ migrations/
 ├── [... one directory per service with a Postgres schema ...]
 ```
 
-Migrations run via `golang-migrate`. Each service runs its own migrations on startup (reads from its schema directory, applies pending files). The CI pipeline runs migrations against a test database before any deployment.
+Migrations run via `scripts/migrate.sh` (pure psql — no golang-migrate dependency). The script applies all SQL files in order using a psql connection. The CI pipeline runs a migrations dry-run against a test database before any deployment. No golang-migrate binary is required.
 
 ---
 
@@ -426,7 +434,7 @@ Migrations run via `golang-migrate`. Each service runs its own migrations on sta
 ```
 1. Run CI checks (above)
 2. docker build + push all images to registry
-3. SSH to VPS A
+3. SSH to NiteOS VPS (31.97.126.86)
 4. docker compose pull       — pull new images
 5. docker compose up -d      — rolling restart (Compose recreates changed services)
 6. Run migrations            — pending migrations apply automatically on service startup
@@ -490,6 +498,6 @@ Secrets (keys, passwords, API tokens) are passed as Docker secrets (files), neve
 | Market (People We Like Market) | `repos/service-2/` (own repo) | Separate product, separate domain, Phase 2 integration |
 | NiteTap hardware design files | TBD (hardware partner) | Physical design files, not software |
 | SSL certificates | Traefik + Cloudflare DNS-01 (auto-managed) | Never committed to git |
-| Docker secrets / `.env` production | VPS A filesystem only | Never committed to git |
-| Grafana data | VPS A `/var/lib/grafana` volume | Runtime state, backed up separately |
-| Postgres data | VPS A `/var/lib/postgres` volume | Runtime state, backed up via `scripts/backup.sh` |
+| Docker secrets / `.env` production | NiteOS VPS filesystem only | Never committed to git |
+| Grafana data | NiteOS VPS `/var/lib/grafana` volume | Runtime state, backed up separately |
+| Postgres data | NiteOS VPS `/var/lib/postgres` volume | Runtime state, backed up via `scripts/backup.sh` |

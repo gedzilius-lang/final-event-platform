@@ -1,6 +1,12 @@
-# VPS A: Rebuild vs. In-Place Overwrite Decision Framework
+# NiteOS VPS (31.97.126.86): Rebuild vs. In-Place Overwrite Decision Framework
 
-Complete `docs/VPS_A_AUDIT_CHECKLIST.md` first. Then apply the rules below.
+> **Machine:** NiteOS VPS — 31.97.126.86. This framework does NOT apply to the Radio VPS (72.60.181.89).
+>
+> **Current state (2026-03-16):** /opt/niteos does not exist. First deploy → always use PATH A.
+> The service-1 co-existence scenario (§4) is no longer relevant — service-1 was never deployed
+> to the NiteOS VPS and does not need to be considered.
+
+Complete `docs/VPS_A_AUDIT_CHECKLIST.md` first (run against 31.97.126.86). Then apply the rules below.
 
 ---
 
@@ -41,9 +47,9 @@ Wipe and rebuild if ANY of the following are true:
 Use when: fresh VPS, OS reinstalled, or wipe criteria above are met.
 
 ### Pre-conditions
-- VPS has been provisioned or reinstalled with Ubuntu 24.04 LTS
+- NiteOS VPS (31.97.126.86) has Ubuntu 22.04 LTS, Docker 29.2.1, SSH hardened (already done)
 - You have SSH root access
-- DNS A record for `niteos.io` → VPS IP is already set in Cloudflare
+- Cloudflare DNS A records point to 31.97.126.86 for api/admin/grafana/traefik.peoplewelike.club
 
 ### Steps
 
@@ -159,38 +165,16 @@ bash scripts/smoke-test-pilot.sh
 
 ---
 
-## §4 — Co-existence with service-1 (Port Conflict)
+## §4 — Co-existence with service-1 (Port Conflict) — SUPERSEDED
 
-If service-1 is running nginx on 80/443 and you are not yet ready to cut over:
+> **This section is no longer applicable.**
+> service-1 was never deployed to the NiteOS VPS (31.97.126.86).
+> The NiteOS VPS has nginx routing :443 → Traefik; no port conflict exists.
+> No staged coexistence steps are needed for first deployment — go directly to PATH A.
 
-```bash
-# Deploy NiteOS on offset ports first (§14 of DEPLOY_VPS_A.md)
-# 1. Edit entrypoints in infra/traefik/traefik.yml:
-#    web:  address: ":8080"
-#    websecure: address: ":8443"
-# 2. Open firewall ports 8080, 8443
-ufw allow 8080/tcp
-ufw allow 8443/tcp
-# 3. Add a staging subdomain (staging.niteos.io → VPS IP) in Cloudflare
-# 4. Deploy and verify at https://staging.niteos.io:8443
-# 5. When ready to cut over, stop nginx, restore ports 80/443 in traefik.yml, restart Traefik.
-```
-
-**Cutover sequence:**
-```bash
-# At cutover window (low traffic):
-systemctl stop nginx
-# or: docker stop <nginx-container>
-
-# Restore traefik.yml to :80/:443
-cd /opt/niteos
-# edit infra/traefik/traefik.yml — set web: ":80" and websecure: ":443"
-docker compose -f infra/docker-compose.cloud.yml --env-file infra/cloud.env \
-  restart traefik
-
-# Confirm TLS
-curl -I https://api.niteos.io/healthz
-```
+If a future scenario arises where another process holds :80/:443 on the NiteOS VPS,
+refer to `docs/VPS_A_STAGED_DEPLOY.md` for the port-offset approach pattern (even though
+that doc was written for a different scenario, the port-offset technique is reusable).
 
 ---
 
@@ -198,9 +182,8 @@ curl -I https://api.niteos.io/healthz
 
 | Scenario | Path |
 |----------|------|
-| Fresh VPS, nothing installed | PATH A |
+| First deploy — /opt/niteos does not exist (current state) | PATH A |
 | OS reinstalled | PATH A |
 | Existing partial deploy, no data worth keeping | PATH A |
 | Existing full deploy, live data, no port conflict | PATH B |
-| Existing deploy, port conflict with service-1 | §4 co-existence, then PATH B cutover |
 | Unknown/compromised state | PATH A (full wipe) |

@@ -14,7 +14,7 @@ warn()  { echo -e "\033[33m[WARN]\033[0m $*"; }
 info()  { echo "       $*"; }
 
 echo ""
-echo "=== NiteOS VPS A pre-flight check ==="
+echo "=== NiteOS VPS pre-flight check ==="
 echo ""
 
 # ── 1. cloud.env exists ────────────────────────────────────────────────────────
@@ -35,8 +35,8 @@ REQUIRED_VARS=(
   DOMAIN ACME_EMAIL
   CF_DNS_API_TOKEN TRAEFIK_DASHBOARD_USERS
   POSTGRES_PASSWORD REDIS_PASSWORD
-  STRIPE_API_KEY STRIPE_WEBHOOK_SECRET
-  SESSION_SECRET GRAFANA_ADMIN_PASSWORD
+  STRIPE_API_KEY STRIPE_WEBHOOK_SECRET STRIPE_PUBLISHABLE_KEY
+  SESSION_SECRET GUEST_SESSION_SECRET GRAFANA_ADMIN_PASSWORD
   TRAEFIK_PORT_SUFFIX
 )
 
@@ -57,7 +57,7 @@ for var in "${REQUIRED_VARS[@]}"; do
 done
 
 # ── 3. Password strength (≥ 20 chars after base64) ────────────────────────────
-for var in POSTGRES_PASSWORD REDIS_PASSWORD SESSION_SECRET GRAFANA_ADMIN_PASSWORD; do
+for var in POSTGRES_PASSWORD REDIS_PASSWORD SESSION_SECRET GUEST_SESSION_SECRET GRAFANA_ADMIN_PASSWORD; do
   val="${!var:-}"
   if [[ ${#val} -lt 20 ]]; then
     warn "$var is short (${#val} chars) — recommend openssl rand -base64 32"
